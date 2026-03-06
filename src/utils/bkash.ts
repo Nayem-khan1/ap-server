@@ -1,42 +1,148 @@
 import axios from "axios";
 import { env } from "../config/env";
 import { logger } from "../config/logger";
+import { BkashTokenCacheModel } from "../modules/payment/bkash-token-cache.model";
 
 interface BkashGrantTokenResponse {
   id_token: string;
 }
 
+interface BkashGatewayRawResponse {
+  trxID?: string;
+  refundTrxID?: string;
+  statusCode?: string;
+  statusMessage?: string;
+  transactionStatus?: string;
+}
+
+export interface BkashGatewayResult {
+  trxID: string;
+  statusCode: string;
+  statusMessage: string;
+  transactionStatus: string;
+  isSuccessful: boolean;
+  raw: unknown;
+}
+
+export interface BkashRefundResult {
+  refundTrxID: string;
+  statusCode: string;
+  statusMessage: string;
+  isSuccessful: boolean;
+  raw: unknown;
+}
+
+const TOKEN_CACHE_KEY = "bkash_grant_token";
+const ONE_HOUR_MS = 60 * 60 * 1000;
 let cachedToken: { value: string; expiresAt: number } | null = null;
-let grantTokenWindow: { windowStart: number; count: number } = {
-  windowStart: 0,
-  count: 0,
-};
+
+function isExampleDomainUrl(rawUrl: string): boolean {
+  try {
+    const parsed = new URL(rawUrl);
+    return parsed.hostname.toLowerCase() === "example.com";
+  } catch {
+    return false;
+  }
+}
+
+function isValidHttpUrl(rawUrl: string): boolean {
+  try {
+    const parsed = new URL(rawUrl);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
 
 function resolveBkashCallbackUrl(): string {
-  if (env.BKASH_CALLBACK_URL.trim()) {
-    return env.BKASH_CALLBACK_URL.trim();
+  const configuredCallbackUrl = env.BKASH_CALLBACK_URL.trim();
+  if (
+    configuredCallbackUrl &&
+    isValidHttpUrl(configuredCallbackUrl) &&
+    !isExampleDomainUrl(configuredCallbackUrl)
+  ) {
+    return configuredCallbackUrl;
   }
 
-  if (env.BKASH_WEBHOOK.trim()) {
-    return env.BKASH_WEBHOOK.trim();
+  const webhookUrl = env.BKASH_WEBHOOK.trim();
+  if (webhookUrl && isValidHttpUrl(webhookUrl) && !isExampleDomainUrl(webhookUrl)) {
+    return webhookUrl;
+  }
+
+  if (
+    configuredCallbackUrl ||
+    webhookUrl
+  ) {
+    logger.warn("Ignoring invalid bKash callback URL and using local fallback");
   }
 
   return `http://localhost:${env.PORT}/api/v1/payments/bkash/callback`;
 }
 
-function assertGrantTokenRateLimit(): void {
-  const now = Date.now();
-  const oneHourMs = 60 * 60 * 1000;
+function isTokenValid(expiresAtMs: number): boolean {
+  return expiresAtMs > Date.now();
+}
 
-  if (!grantTokenWindow.windowStart || now - grantTokenWindow.windowStart >= oneHourMs) {
-    grantTokenWindow = { windowStart: now, count: 0 };
+function normalizeBkashResult(
+  rawData: BkashGatewayRawResponse,
+  fallbackTrxId: string,
+): BkashGatewayResult {
+  const statusCode = String(rawData.statusCode ?? "");
+  const statusMessage = String(rawData.statusMessage ?? "");
+  const transactionStatus = String(rawData.transactionStatus ?? "");
+  const trxID = String(rawData.trxID ?? fallbackTrxId);
+
+  const isSuccessful =
+    statusCode === "0000" &&
+    statusMessage === "Successful" &&
+    transactionStatus === "Completed";
+
+  return {
+    trxID,
+    statusCode,
+    statusMessage,
+    transactionStatus,
+    isSuccessful,
+    raw: rawData,
+  };
+}
+
+function normalizeBkashRefundResult(rawData: BkashGatewayRawResponse): BkashRefundResult {
+  const statusCode = String(rawData.statusCode ?? "");
+  const statusMessage = String(rawData.statusMessage ?? "");
+  const refundTrxID = String(rawData.refundTrxID ?? "");
+
+  const isSuccessful = statusCode === "0000" && statusMessage === "Successful";
+
+  return {
+    refundTrxID,
+    statusCode,
+    statusMessage,
+    isSuccessful,
+    raw: rawData,
+  };
+}
+
+function isExecuteTimeoutWithoutResponse(error: unknown): boolean {
+  if (!axios.isAxiosError(error)) {
+    return false;
   }
 
-  if (grantTokenWindow.count >= 2) {
-    throw new Error("bKash token grant rate limit reached (max 2/hour)");
+  if (error.response) {
+    return false;
   }
 
-  grantTokenWindow.count += 1;
+  return error.code === "ECONNABORTED" || error.code === "ETIMEDOUT";
+}
+
+export class BkashExecuteTimeoutError extends Error {
+  constructor(
+    message: string,
+    public readonly raw?: unknown,
+  ) {
+    super(message);
+    this.name = "BkashExecuteTimeoutError";
+  }
 }
 
 async function getAccessToken(): Promise<string> {
@@ -54,7 +160,33 @@ async function getAccessToken(): Promise<string> {
     return "";
   }
 
-  assertGrantTokenRateLimit();
+  const existingCache = await BkashTokenCacheModel.findOne({
+    key: TOKEN_CACHE_KEY,
+  });
+
+  if (existingCache) {
+    const cachedExpiry = existingCache.expires_at.getTime();
+    if (isTokenValid(cachedExpiry)) {
+      cachedToken = {
+        value: existingCache.id_token,
+        expiresAt: cachedExpiry,
+      };
+      return existingCache.id_token;
+    }
+  }
+
+  const now = Date.now();
+  let grantWindowStart = existingCache?.grant_window_start.getTime() ?? now;
+  let grantCallCount = existingCache?.grant_call_count ?? 0;
+
+  if (now - grantWindowStart >= ONE_HOUR_MS) {
+    grantWindowStart = now;
+    grantCallCount = 0;
+  }
+
+  if (grantCallCount >= 2) {
+    throw new Error("bKash token grant rate limit reached (max 2/hour)");
+  }
 
   const response = await axios.post<BkashGrantTokenResponse>(
     `${env.BKASH_BASE_URL}/tokenized/checkout/token/grant`,
@@ -67,12 +199,31 @@ async function getAccessToken(): Promise<string> {
         username: env.BKASH_USERNAME,
         password: env.BKASH_PASSWORD,
       },
+      timeout: 15000,
+    },
+  );
+
+  const expiresAt = Date.now() + env.BKASH_TOKEN_CACHE_TTL * 1000;
+
+  await BkashTokenCacheModel.findOneAndUpdate(
+    { key: TOKEN_CACHE_KEY },
+    {
+      key: TOKEN_CACHE_KEY,
+      id_token: response.data.id_token,
+      expires_at: new Date(expiresAt),
+      grant_window_start: new Date(grantWindowStart),
+      grant_call_count: grantCallCount + 1,
+    },
+    {
+      upsert: true,
+      runValidators: true,
+      setDefaultsOnInsert: true,
     },
   );
 
   cachedToken = {
     value: response.data.id_token,
-    expiresAt: Date.now() + env.BKASH_TOKEN_CACHE_TTL * 1000,
+    expiresAt,
   };
 
   return cachedToken.value;
@@ -153,32 +304,123 @@ export async function bkashExecutePayment(paymentID: string): Promise<{
   }
 
   const token = await getAccessToken();
-  const response = await axios.post(
-    `${env.BKASH_BASE_URL}/tokenized/checkout/execute`,
-    { paymentID },
-    {
-      headers: {
-        authorization: token,
-        "x-app-key": env.BKASH_APP_KEY,
+  try {
+    const response = await axios.post(
+      `${env.BKASH_BASE_URL}/tokenized/checkout/execute`,
+      { paymentID },
+      {
+        headers: {
+          authorization: token,
+          "x-app-key": env.BKASH_APP_KEY,
+        },
+        timeout: 15000,
       },
-    },
-  );
+    );
 
-  const statusCode = String(response.data.statusCode ?? "");
-  const statusMessage = String(response.data.statusMessage ?? "");
-  const transactionStatus = String(response.data.transactionStatus ?? "");
+    return normalizeBkashResult(response.data, paymentID);
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.data) {
+      return normalizeBkashResult(
+        error.response.data as BkashGatewayRawResponse,
+        paymentID,
+      );
+    }
 
-  const isSuccessful =
-    statusCode === "0000" &&
-    statusMessage === "Successful" &&
-    transactionStatus === "Completed";
+    if (isExecuteTimeoutWithoutResponse(error)) {
+      throw new BkashExecuteTimeoutError(
+        "Execute API timeout without response",
+        error,
+      );
+    }
 
-  return {
-    trxID: String(response.data.trxID ?? paymentID),
-    statusCode,
-    statusMessage,
-    transactionStatus,
-    isSuccessful,
-    raw: response.data,
-  };
+    throw error;
+  }
+}
+
+export async function bkashQueryPayment(paymentID: string): Promise<BkashGatewayResult> {
+  if (!env.BKASH_BASE_URL) {
+    return normalizeBkashResult(
+      {
+        trxID: `TRX-${paymentID}`.slice(0, 24),
+        statusCode: "0000",
+        statusMessage: "Successful",
+        transactionStatus: "Completed",
+      },
+      paymentID,
+    );
+  }
+
+  const token = await getAccessToken();
+
+  try {
+    const response = await axios.post(
+      `${env.BKASH_BASE_URL}/tokenized/checkout/payment/status`,
+      { paymentID },
+      {
+        headers: {
+          authorization: token,
+          "x-app-key": env.BKASH_APP_KEY,
+        },
+        timeout: 15000,
+      },
+    );
+
+    return normalizeBkashResult(response.data, paymentID);
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.data) {
+      return normalizeBkashResult(
+        error.response.data as BkashGatewayRawResponse,
+        paymentID,
+      );
+    }
+
+    throw error;
+  }
+}
+
+export async function bkashRefundPayment(payload: {
+  paymentID: string;
+  trxID: string;
+  amount: number;
+  reason: string;
+  sku?: string;
+}): Promise<BkashRefundResult> {
+  if (!env.BKASH_BASE_URL) {
+    return normalizeBkashRefundResult({
+      refundTrxID: `RFND-${payload.trxID}`.slice(0, 30),
+      statusCode: "0000",
+      statusMessage: "Successful",
+    });
+  }
+
+  const token = await getAccessToken();
+
+  try {
+    const response = await axios.post(
+      `${env.BKASH_BASE_URL}/tokenized/checkout/payment/refund`,
+      {
+        paymentID: payload.paymentID,
+        trxID: payload.trxID,
+        amount: payload.amount.toFixed(2),
+        reason: payload.reason,
+        sku: payload.sku ?? "course",
+      },
+      {
+        headers: {
+          authorization: token,
+          "x-app-key": env.BKASH_APP_KEY,
+        },
+        timeout: 15000,
+      },
+    );
+
+    return normalizeBkashRefundResult(response.data);
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.data) {
+      return normalizeBkashRefundResult(error.response.data as BkashGatewayRawResponse);
+    }
+
+    logger.error("bKash refund failed without response", error as Error);
+    throw error;
+  }
 }

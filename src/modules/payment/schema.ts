@@ -56,6 +56,29 @@ export const bkashExecuteSchema = z
     },
   );
 
+export const bkashRefundSchema = z
+  .object({
+    payment_id: z.string().optional(),
+    paymentID: z.string().optional(),
+    invoice: z.string().optional(),
+    trxID: z.string().min(1).optional(),
+    amount: z.coerce.number().positive(),
+    reason: z.string().min(3),
+    sku: z.string().min(1).optional(),
+  })
+  .refine(
+    (value) =>
+      Boolean(
+        (value.payment_id && value.payment_id.trim()) ||
+          (value.paymentID && value.paymentID.trim()) ||
+          (value.invoice && value.invoice.trim()),
+      ),
+    {
+      message: "Provide payment_id, paymentID, or invoice",
+      path: ["payment_id"],
+    },
+  );
+
 export const paymentValidation = {
   paymentId: { params: paymentIdParamSchema },
   verify: { params: paymentIdParamSchema, body: verifyPaymentSchema },
@@ -66,4 +89,5 @@ export const paymentValidation = {
   bkashCallback: { query: bkashCallbackQuerySchema },
   bkashCallbackBody: { body: bkashCallbackBodySchema },
   bkashExecute: { body: bkashExecuteSchema },
+  bkashRefund: { body: bkashRefundSchema },
 };

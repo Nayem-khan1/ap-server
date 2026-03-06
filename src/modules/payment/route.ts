@@ -56,5 +56,10 @@ paymentGatewayRouter.post(
   validateRequest(paymentValidation.bkashExecute),
   paymentController.executeBkashPayment,
 );
+paymentGatewayRouter.post(
+  "/bkash/refund",
+  validateRequest(paymentValidation.bkashRefund),
+  paymentController.refundBkashPayment,
+);
 
 export { paymentRouter, paymentGatewayRouter };

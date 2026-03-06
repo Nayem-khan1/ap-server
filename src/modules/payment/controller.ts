@@ -122,4 +122,15 @@ export const paymentController = {
       data,
     });
   }),
+
+  refundBkashPayment: catchAsync(async (req: Request, res: Response) => {
+    const data = await paymentService.refundBkashPayment(req.body);
+    return sendResponse({
+      res,
+      statusCode: StatusCodes.OK,
+      success: true,
+      message: "bKash refund processed",
+      data,
+    });
+  }),
 };

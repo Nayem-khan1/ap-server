@@ -1,6 +1,12 @@
 import { StatusCodes } from "http-status-codes";
 import { AppError } from "../../errors/app-error";
-import { bkashCreatePayment, bkashExecutePayment } from "../../utils/bkash";
+import {
+  BkashExecuteTimeoutError,
+  bkashCreatePayment,
+  bkashExecutePayment,
+  bkashQueryPayment,
+  bkashRefundPayment,
+} from "../../utils/bkash";
 import { env } from "../../config/env";
 import { CourseModel } from "../course/model";
 import { EnrollmentModel } from "../enrollment/model";
@@ -11,7 +17,7 @@ function makeInvoiceId(courseId: string, studentId: string): string {
   return `BKASH-${courseId.slice(-4)}-${studentId.slice(-4)}-${Date.now()}`;
 }
 
-type CallbackRedirectStatus = "success" | "failed" | "cancelled";
+type CallbackRedirectStatus = "success" | "failed";
 
 function appendQueryParams(
   baseUrl: string,
@@ -31,19 +37,18 @@ function resolveCallbackRedirectUrl(
   status: CallbackRedirectStatus,
   payment: Record<string, unknown>,
   reason?: string,
+  statusCode?: string,
+  statusMessage?: string,
+  transactionStatus?: string,
 ): string | null {
+  const successFallbackUrl = "http://localhost:3000/payment/success";
+  const failureFallbackUrl = "http://localhost:3000/payment/fail";
   let baseUrl = "";
 
   if (status === "success") {
-    baseUrl = env.BKASH_CALLBACK_SUCCESS;
-  } else if (status === "cancelled") {
-    baseUrl = env.BKASH_CALLBACK_CANCEL;
+    baseUrl = env.BKASH_CALLBACK_SUCCESS.trim() || successFallbackUrl;
   } else {
-    baseUrl = env.BKASH_CALLBACK_FAIL;
-  }
-
-  if (!baseUrl.trim()) {
-    return null;
+    baseUrl = env.BKASH_CALLBACK_FAIL.trim() || failureFallbackUrl;
   }
 
   return appendQueryParams(baseUrl, {
@@ -53,6 +58,9 @@ function resolveCallbackRedirectUrl(
     paymentID: String(payment.paymentID ?? ""),
     trx_id: String(payment.trx_id ?? ""),
     reason,
+    statusCode,
+    statusMessage,
+    transactionStatus,
   });
 }
 
@@ -115,9 +123,29 @@ async function resolveGatewayPayment(input: {
 async function executeGatewayPayment(
   payment: any,
   paymentID?: string,
-): Promise<{ verified: boolean; payment: Record<string, unknown> }> {
+): Promise<{
+  verified: boolean;
+  payment: Record<string, unknown>;
+  statusCode: string;
+  statusMessage: string;
+  transactionStatus: string;
+  verificationSource: "execute" | "query_after_execute_timeout";
+}> {
   const executionRef = paymentID || payment.paymentID || payment.trx_id;
-  const executeResult = await bkashExecutePayment(executionRef);
+  let executeResult;
+  let verificationSource: "execute" | "query_after_execute_timeout" = "execute";
+
+  try {
+    executeResult = await bkashExecutePayment(executionRef);
+  } catch (error) {
+    if (error instanceof BkashExecuteTimeoutError) {
+      executeResult = await bkashQueryPayment(executionRef);
+      verificationSource = "query_after_execute_timeout";
+    } else {
+      throw error;
+    }
+  }
+
   const verified = executeResult.isSuccessful;
 
   payment.status = verified ? "verified" : "failed";
@@ -131,8 +159,16 @@ async function executeGatewayPayment(
     trx_id: payment.trx_id,
     gateway: "bKash",
     status: verified ? "success" : "failed",
-    reason: verified ? "Payment executed successfully" : "Execution failed",
-    gateway_response: executeResult.raw,
+    reason: verified
+      ? "Payment executed successfully"
+      : executeResult.statusMessage || "Execution failed",
+    gateway_response: {
+      verification_source: verificationSource,
+      statusCode: executeResult.statusCode,
+      statusMessage: executeResult.statusMessage,
+      transactionStatus: executeResult.transactionStatus,
+      raw: executeResult.raw,
+    },
   });
 
   if (verified) {
@@ -175,6 +211,10 @@ async function executeGatewayPayment(
   return {
     verified,
     payment: payment.toJSON(),
+    statusCode: executeResult.statusCode,
+    statusMessage: executeResult.statusMessage,
+    transactionStatus: executeResult.transactionStatus,
+    verificationSource,
   };
 }
 
@@ -331,14 +371,29 @@ export const paymentService = {
     });
 
     if (!payment) {
-      throw new AppError(StatusCodes.NOT_FOUND, "Payment reference not found");
+      const redirectStatus: CallbackRedirectStatus = "failed";
+      return {
+        redirect_status: redirectStatus,
+        payment: null,
+        redirect_url: resolveCallbackRedirectUrl(
+          redirectStatus,
+          {},
+          "Payment reference not found",
+        ),
+      };
     }
 
-    if (query.status && query.status.toLowerCase() !== "success") {
-      const isCancelled = query.status.toLowerCase() === "cancel";
-      const redirectStatus: CallbackRedirectStatus = isCancelled
-        ? "cancelled"
-        : "failed";
+    const callbackStatus = (query.status ?? "").trim().toLowerCase();
+    if (callbackStatus !== "success") {
+      const redirectStatus: CallbackRedirectStatus = "failed";
+      const failureReason =
+        callbackStatus === "cancel"
+          ? "Payment cancelled by user"
+          : callbackStatus === "failure" || callbackStatus === "failed"
+            ? "Payment failed"
+            : callbackStatus
+              ? `Payment failed with status: ${query.status}`
+              : "Payment callback status missing";
 
       payment.status = "failed";
       await payment.save();
@@ -349,8 +404,11 @@ export const paymentService = {
         trx_id: payment.trx_id,
         gateway: "bKash",
         status: "failed",
-        reason: "Callback status not success",
-        gateway_response: query,
+        reason: failureReason,
+        gateway_response: {
+          ...query,
+          callback_status: callbackStatus || "unknown",
+        },
       });
 
       const paymentJson = payment.toJSON() as Record<string, unknown>;
@@ -360,7 +418,7 @@ export const paymentService = {
         redirect_url: resolveCallbackRedirectUrl(
           redirectStatus,
           paymentJson,
-          `bKash callback status: ${query.status}`,
+          failureReason,
         ),
       };
     }
@@ -376,7 +434,10 @@ export const paymentService = {
       redirect_url: resolveCallbackRedirectUrl(
         redirectStatus,
         result.payment,
-        result.verified ? undefined : "Payment verification failed",
+        result.verified ? undefined : result.statusMessage || "Payment verification failed",
+        result.statusCode,
+        result.statusMessage,
+        result.transactionStatus,
       ),
     };
   },
@@ -395,6 +456,76 @@ export const paymentService = {
     return {
       redirect_status: result.verified ? "success" : "failed",
       payment: result.payment,
+    };
+  },
+
+  async refundBkashPayment(payload: {
+    payment_id?: string;
+    paymentID?: string;
+    invoice?: string;
+    trxID?: string;
+    amount: number;
+    reason: string;
+    sku?: string;
+  }) {
+    const payment = await resolveGatewayPayment(payload);
+    if (!payment) {
+      throw new AppError(StatusCodes.NOT_FOUND, "Payment reference not found");
+    }
+
+    const paymentID = payload.paymentID || payment.paymentID;
+    if (!paymentID) {
+      throw new AppError(
+        StatusCodes.BAD_REQUEST,
+        "bKash paymentID is required for refund",
+      );
+    }
+
+    const trxID = payload.trxID || payment.trx_id;
+    if (!trxID) {
+      throw new AppError(StatusCodes.BAD_REQUEST, "Transaction ID is required for refund");
+    }
+
+    const refundResult = await bkashRefundPayment({
+      paymentID,
+      trxID,
+      amount: payload.amount,
+      reason: payload.reason,
+      sku: payload.sku,
+    });
+
+    await PaymentTransactionLogModel.create({
+      payment_id: payment.id,
+      trx_id: trxID,
+      gateway: "bKash",
+      status: refundResult.isSuccessful ? "success" : "failed",
+      reason: refundResult.isSuccessful
+        ? "Payment refunded successfully"
+        : refundResult.statusMessage || "Refund failed",
+      gateway_response: {
+        action: "refund",
+        statusCode: refundResult.statusCode,
+        statusMessage: refundResult.statusMessage,
+        refundTrxID: refundResult.refundTrxID,
+        raw: refundResult.raw,
+      },
+    });
+
+    if (refundResult.isSuccessful) {
+      payment.status = "failed";
+      payment.manually_verified_by = "bKash Refund";
+      await payment.save();
+      await lockEnrollmentForPayment(payment);
+    }
+
+    return {
+      payment: payment.toJSON(),
+      refund: {
+        refundTrxID: refundResult.refundTrxID,
+        statusCode: refundResult.statusCode,
+        statusMessage: refundResult.statusMessage,
+        isSuccessful: refundResult.isSuccessful,
+      },
     };
   },
 };
