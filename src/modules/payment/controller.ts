@@ -92,6 +92,17 @@ export const paymentController = {
       ...(req.body as Record<string, string | undefined>),
     };
     const data = await paymentService.handleBkashCallback(callbackPayload);
+
+    if (
+      data &&
+      typeof data === "object" &&
+      "redirect_url" in data &&
+      typeof data.redirect_url === "string" &&
+      data.redirect_url.trim()
+    ) {
+      return res.redirect(302, data.redirect_url);
+    }
+
     return sendResponse({
       res,
       statusCode: StatusCodes.OK,

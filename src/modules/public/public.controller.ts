@@ -69,6 +69,30 @@ export const publicController = {
     });
   }),
 
+  listInstructors: catchAsync(async (req: Request, res: Response) => {
+    const data = await publicService.listInstructors(req.query as any);
+
+    return sendResponse({
+      res,
+      statusCode: StatusCodes.OK,
+      success: true,
+      message: "Instructors fetched successfully",
+      data,
+    });
+  }),
+
+  listTestimonials: catchAsync(async (req: Request, res: Response) => {
+    const data = await publicService.listTestimonials(req.query as any);
+
+    return sendResponse({
+      res,
+      statusCode: StatusCodes.OK,
+      success: true,
+      message: "Testimonials fetched successfully",
+      data,
+    });
+  }),
+
   getEventBySlug: catchAsync(async (req: Request, res: Response) => {
     const data = await publicService.getEventBySlug(req.params.slug, extractLang(req));
 

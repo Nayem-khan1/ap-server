@@ -6,7 +6,7 @@ interface SendResponseArgs<T> {
   statusCode: number;
   success: boolean;
   message: string;
-  data?: T;
+  data?: T | null;
   errors?: unknown;
 }
 
@@ -21,11 +21,8 @@ export function sendResponse<T>({
   const payload: ApiResponse<T> = {
     success,
     message,
+    data: typeof data === "undefined" ? null : data,
   };
-
-  if (typeof data !== "undefined") {
-    payload.data = data;
-  }
 
   if (typeof errors !== "undefined") {
     payload.errors = errors;
@@ -33,4 +30,3 @@ export function sendResponse<T>({
 
   return res.status(statusCode).json(payload);
 }
-

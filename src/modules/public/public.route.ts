@@ -36,6 +36,18 @@ router.get(
 );
 
 router.get(
+  "/instructors",
+  validateRequest(publicValidation.listInstructors),
+  publicController.listInstructors,
+);
+
+router.get(
+  "/testimonials",
+  validateRequest(publicValidation.listTestimonials),
+  publicController.listTestimonials,
+);
+
+router.get(
   "/events/:slug",
   validateRequest(publicValidation.getEventBySlug),
   publicController.getEventBySlug,

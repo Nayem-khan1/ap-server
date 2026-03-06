@@ -35,6 +35,10 @@ const listEventsQuerySchema = paginationQuerySchema.extend({
   lang: languageSchema,
 });
 
+const listInstructorsQuerySchema = paginationQuerySchema;
+
+const listTestimonialsQuerySchema = paginationQuerySchema;
+
 const slugParamSchema = z.object({
   slug: z.string().trim().min(1),
 });
@@ -61,6 +65,12 @@ export const publicValidation = {
   listEvents: {
     query: listEventsQuerySchema,
   },
+  listInstructors: {
+    query: listInstructorsQuerySchema,
+  },
+  listTestimonials: {
+    query: listTestimonialsQuerySchema,
+  },
   getEventBySlug: {
     params: slugParamSchema,
     query: z.object({ lang: languageSchema }),
@@ -73,3 +83,5 @@ export const publicValidation = {
 export type ListCoursesQuery = z.infer<typeof listCoursesQuerySchema>;
 export type ListBlogsQuery = z.infer<typeof listBlogsQuerySchema>;
 export type ListEventsQuery = z.infer<typeof listEventsQuerySchema>;
+export type ListInstructorsQuery = z.infer<typeof listInstructorsQuerySchema>;
+export type ListTestimonialsQuery = z.infer<typeof listTestimonialsQuerySchema>;

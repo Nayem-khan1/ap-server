@@ -1,6 +1,7 @@
 import { StatusCodes } from "http-status-codes";
 import { AppError } from "../../errors/app-error";
 import { bkashCreatePayment, bkashExecutePayment } from "../../utils/bkash";
+import { env } from "../../config/env";
 import { CourseModel } from "../course/model";
 import { EnrollmentModel } from "../enrollment/model";
 import { UserModel } from "../user/model";
@@ -8,6 +9,51 @@ import { PaymentModel, PaymentTransactionLogModel } from "./model";
 
 function makeInvoiceId(courseId: string, studentId: string): string {
   return `BKASH-${courseId.slice(-4)}-${studentId.slice(-4)}-${Date.now()}`;
+}
+
+type CallbackRedirectStatus = "success" | "failed" | "cancelled";
+
+function appendQueryParams(
+  baseUrl: string,
+  params: Record<string, string | undefined>,
+): string {
+  const url = new URL(baseUrl);
+
+  for (const [key, value] of Object.entries(params)) {
+    if (!value) continue;
+    url.searchParams.set(key, value);
+  }
+
+  return url.toString();
+}
+
+function resolveCallbackRedirectUrl(
+  status: CallbackRedirectStatus,
+  payment: Record<string, unknown>,
+  reason?: string,
+): string | null {
+  let baseUrl = "";
+
+  if (status === "success") {
+    baseUrl = env.BKASH_CALLBACK_SUCCESS;
+  } else if (status === "cancelled") {
+    baseUrl = env.BKASH_CALLBACK_CANCEL;
+  } else {
+    baseUrl = env.BKASH_CALLBACK_FAIL;
+  }
+
+  if (!baseUrl.trim()) {
+    return null;
+  }
+
+  return appendQueryParams(baseUrl, {
+    status,
+    payment_id: String(payment.id ?? ""),
+    invoice: String(payment.invoice ?? ""),
+    paymentID: String(payment.paymentID ?? ""),
+    trx_id: String(payment.trx_id ?? ""),
+    reason,
+  });
 }
 
 async function lockEnrollmentForPayment(payment: any): Promise<void> {
@@ -289,6 +335,11 @@ export const paymentService = {
     }
 
     if (query.status && query.status.toLowerCase() !== "success") {
+      const isCancelled = query.status.toLowerCase() === "cancel";
+      const redirectStatus: CallbackRedirectStatus = isCancelled
+        ? "cancelled"
+        : "failed";
+
       payment.status = "failed";
       await payment.save();
       await lockEnrollmentForPayment(payment);
@@ -301,14 +352,32 @@ export const paymentService = {
         reason: "Callback status not success",
         gateway_response: query,
       });
-      return { redirect_status: "failed", payment: payment.toJSON() };
+
+      const paymentJson = payment.toJSON() as Record<string, unknown>;
+      return {
+        redirect_status: redirectStatus,
+        payment: paymentJson,
+        redirect_url: resolveCallbackRedirectUrl(
+          redirectStatus,
+          paymentJson,
+          `bKash callback status: ${query.status}`,
+        ),
+      };
     }
 
     const result = await executeGatewayPayment(payment, query.paymentID);
+    const redirectStatus: CallbackRedirectStatus = result.verified
+      ? "success"
+      : "failed";
 
     return {
-      redirect_status: result.verified ? "success" : "failed",
+      redirect_status: redirectStatus,
       payment: result.payment,
+      redirect_url: resolveCallbackRedirectUrl(
+        redirectStatus,
+        result.payment,
+        result.verified ? undefined : "Payment verification failed",
+      ),
     };
   },
 

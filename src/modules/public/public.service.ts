@@ -8,11 +8,15 @@ import {
 import { CourseModel } from "../course/model";
 import { BlogModel } from "../blog/model";
 import { EventModel } from "../event/model";
+import { UserModel } from "../user/model";
+import { IssuedCertificateModel } from "../certificate/model";
 import { certificateService } from "../certificate/service";
 import {
   ListBlogsQuery,
   ListCoursesQuery,
   ListEventsQuery,
+  ListInstructorsQuery,
+  ListTestimonialsQuery,
 } from "./public.validation";
 
 type Language = "bn" | "en";
@@ -189,6 +193,70 @@ export const publicService = {
         query.lang as Language,
       ),
     );
+
+    return {
+      items,
+      pagination: getPaginationMeta(page, page_size, total),
+    };
+  },
+
+  async listInstructors(
+    query: ListInstructorsQuery,
+  ): Promise<PaginatedResult<Record<string, unknown>>> {
+    const { page, page_size, skip } = getPaginationOptions(query);
+
+    const filter: Record<string, unknown> = {
+      role: "instructor",
+      status: "active",
+      publish_status: "published",
+    };
+
+    const [instructors, total] = await Promise.all([
+      UserModel.find(filter)
+        .select("name email bio avatar specialization publish_status")
+        .sort({ updatedAt: -1 })
+        .skip(skip)
+        .limit(page_size),
+      UserModel.countDocuments(filter),
+    ]);
+
+    return {
+      items: instructors.map((item) => item.toJSON()),
+      pagination: getPaginationMeta(page, page_size, total),
+    };
+  },
+
+  async listTestimonials(
+    query: ListTestimonialsQuery,
+  ): Promise<PaginatedResult<Record<string, unknown>>> {
+    const { page, page_size, skip } = getPaginationOptions(query);
+
+    const filter: Record<string, unknown> = {
+      verification_status: "verified",
+    };
+
+    const [certificates, total] = await Promise.all([
+      IssuedCertificateModel.find(filter)
+        .sort({ issued_at: -1 })
+        .skip(skip)
+        .limit(page_size),
+      IssuedCertificateModel.countDocuments(filter),
+    ]);
+
+    const items = certificates.map((item) => {
+      const certificate = item.toJSON() as Record<string, unknown>;
+      const studentName = String(certificate.student_name ?? "Student");
+      const courseName = String(certificate.linked_course_name ?? "Astronomy Course");
+
+      return {
+        id: certificate.id,
+        student_name: studentName,
+        role: "Learner",
+        content: `${studentName} successfully completed ${courseName} at Astronomy Pathshala.`,
+        issued_at: certificate.issued_at,
+        certificate_no: certificate.certificate_no,
+      };
+    });
 
     return {
       items,

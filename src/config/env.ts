@@ -34,6 +34,11 @@ const envSchema = z.object({
   BKASH_APP_KEY: z.string().default(""),
   BKASH_APP_SECRET: z.string().default(""),
   BKASH_CALLBACK_URL: z.string().default(""),
+  BKASH_CALLBACK_SUCCESS: z.string().default(""),
+  BKASH_CALLBACK_FAIL: z.string().default(""),
+  BKASH_CALLBACK_CANCEL: z.string().default(""),
+  BKASH_WEBHOOK: z.string().default(""),
+  BKASH_TOKEN_CACHE_TTL: z.coerce.number().int().positive().default(3600),
 
   CLOUDINARY_CLOUD_NAME: z.string().default(""),
   CLOUDINARY_API_KEY: z.string().default(""),

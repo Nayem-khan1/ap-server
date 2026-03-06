@@ -12,6 +12,18 @@ let grantTokenWindow: { windowStart: number; count: number } = {
   count: 0,
 };
 
+function resolveBkashCallbackUrl(): string {
+  if (env.BKASH_CALLBACK_URL.trim()) {
+    return env.BKASH_CALLBACK_URL.trim();
+  }
+
+  if (env.BKASH_WEBHOOK.trim()) {
+    return env.BKASH_WEBHOOK.trim();
+  }
+
+  return `http://localhost:${env.PORT}/api/v1/payments/bkash/callback`;
+}
+
 function assertGrantTokenRateLimit(): void {
   const now = Date.now();
   const oneHourMs = 60 * 60 * 1000;
@@ -60,7 +72,7 @@ async function getAccessToken(): Promise<string> {
 
   cachedToken = {
     value: response.data.id_token,
-    expiresAt: Date.now() + 60 * 60 * 1000,
+    expiresAt: Date.now() + env.BKASH_TOKEN_CACHE_TTL * 1000,
   };
 
   return cachedToken.value;
@@ -70,7 +82,7 @@ export async function bkashCreatePayment(payload: {
   amount: number;
   invoiceNumber: string;
 }): Promise<{ paymentID: string; bkashURL: string; mode: "sandbox" | "mock" }> {
-  const callbackUrl = env.BKASH_CALLBACK_URL || "https://example.com/bkash/callback";
+  const callbackUrl = resolveBkashCallbackUrl();
 
   if (!env.BKASH_BASE_URL) {
     return {
