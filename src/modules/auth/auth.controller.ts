@@ -14,6 +14,25 @@ const refreshCookieMaxAgeMs = parseDurationToMs(
 );
 
 export const authController = {
+  studentRegister: catchAsync(async (req: Request, res: Response) => {
+    const result = await authService.registerStudent(req.body);
+
+    res.cookie(REFRESH_COOKIE, result.refresh_token, {
+      httpOnly: true,
+      secure: env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: refreshCookieMaxAgeMs,
+    });
+
+    return sendResponse({
+      res,
+      statusCode: StatusCodes.CREATED,
+      success: true,
+      message: "Registration successful",
+      data: result,
+    });
+  }),
+
   studentLogin: catchAsync(async (req: Request, res: Response) => {
     const result = await authService.loginStudent(req.body);
 

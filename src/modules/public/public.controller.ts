@@ -9,6 +9,18 @@ function extractLang(req: Request): "bn" | "en" {
 }
 
 export const publicController = {
+  listCourseCategories: catchAsync(async (req: Request, res: Response) => {
+    const data = await publicService.listCourseCategories(req.query as any);
+
+    return sendResponse({
+      res,
+      statusCode: StatusCodes.OK,
+      success: true,
+      message: "Course categories fetched successfully",
+      data,
+    });
+  }),
+
   listCourses: catchAsync(async (req: Request, res: Response) => {
     const data = await publicService.listCourses(req.query as any);
 

@@ -2,6 +2,13 @@ import { z } from "zod";
 
 const emailSchema = z.string().trim().email();
 
+const studentRegisterBodySchema = z.object({
+  name: z.string().trim().min(2, "Name must be at least 2 characters"),
+  email: emailSchema,
+  password: z.string().min(8, "Password must be at least 8 characters"),
+  phone: z.string().trim().min(6).max(32).optional(),
+});
+
 const studentLoginBodySchema = z.object({
   email: emailSchema,
   password: z.string().min(6),
@@ -28,6 +35,9 @@ const resetPasswordBodySchema = z.object({
 });
 
 export const authValidation = {
+  studentRegister: {
+    body: studentRegisterBodySchema,
+  },
   studentLogin: {
     body: studentLoginBodySchema,
   },
@@ -45,6 +55,7 @@ export const authValidation = {
   },
 };
 
+export type StudentRegisterBody = z.infer<typeof studentRegisterBodySchema>;
 export type StudentLoginBody = z.infer<typeof studentLoginBodySchema>;
 export type AdminLoginBody = z.infer<typeof adminLoginBodySchema>;
 export type ForgotPasswordBody = z.infer<typeof forgotPasswordBodySchema>;

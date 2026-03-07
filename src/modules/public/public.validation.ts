@@ -9,7 +9,8 @@ const paginationQuerySchema = z.object({
 
 const listCoursesQuerySchema = paginationQuerySchema
   .extend({
-    grade: z.string().trim().optional(),
+    category_id: z.string().trim().optional(),
+    price_type: z.enum(["free", "paid"]).optional(),
     min_price: z.coerce.number().min(0).optional(),
     max_price: z.coerce.number().min(0).optional(),
     lang: languageSchema,
@@ -28,6 +29,10 @@ const listCoursesQuerySchema = paginationQuerySchema
 const listBlogsQuerySchema = paginationQuerySchema.extend({
   category: z.string().trim().optional(),
   tag: z.string().trim().optional(),
+  lang: languageSchema,
+});
+
+const listCourseCategoriesQuerySchema = z.object({
   lang: languageSchema,
 });
 
@@ -55,6 +60,9 @@ export const publicValidation = {
     params: slugParamSchema,
     query: z.object({ lang: languageSchema }),
   },
+  listCourseCategories: {
+    query: listCourseCategoriesQuerySchema,
+  },
   listBlogs: {
     query: listBlogsQuerySchema,
   },
@@ -81,6 +89,7 @@ export const publicValidation = {
 };
 
 export type ListCoursesQuery = z.infer<typeof listCoursesQuerySchema>;
+export type ListCourseCategoriesQuery = z.infer<typeof listCourseCategoriesQuerySchema>;
 export type ListBlogsQuery = z.infer<typeof listBlogsQuerySchema>;
 export type ListEventsQuery = z.infer<typeof listEventsQuerySchema>;
 export type ListInstructorsQuery = z.infer<typeof listInstructorsQuerySchema>;

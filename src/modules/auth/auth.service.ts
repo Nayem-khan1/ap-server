@@ -12,6 +12,7 @@ import {
   AdminLoginBody,
   ForgotPasswordBody,
   ResetPasswordBody,
+  StudentRegisterBody,
   StudentLoginBody,
   VerifyOtpBody,
 } from "./auth.validation";
@@ -78,22 +79,24 @@ async function issueTokensForUser(
     id?: string | null;
     _id?: unknown;
     role: "super_admin" | "admin" | "instructor" | "student";
-    tokenVersion: number;
+    tokenVersion?: number;
     refreshTokenHash: string | null;
     refreshTokenExpiresAt: Date | null;
     save: () => Promise<unknown>;
   },
 ) {
+  const tokenVersion = typeof user.tokenVersion === "number" ? user.tokenVersion : 0;
   const resolvedId = resolveUserId(user);
   const tokenPayload = {
     userId: resolvedId,
     role: user.role,
-    tokenVersion: user.tokenVersion,
+    tokenVersion,
   };
 
   const access_token = createAccessToken(tokenPayload);
   const refresh_token = createRefreshToken(tokenPayload);
 
+  user.tokenVersion = tokenVersion;
   user.refreshTokenHash = sha256(refresh_token);
   user.refreshTokenExpiresAt = new Date(Date.now() + refreshTokenMaxAgeMs);
   await user.save();
@@ -101,7 +104,109 @@ async function issueTokensForUser(
   return { access_token, refresh_token };
 }
 
+function sanitizeUsername(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function buildUsernameSeed(name: string, email: string): string {
+  const nameSeed = sanitizeUsername(name);
+  if (nameSeed.length >= 3) {
+    return nameSeed.slice(0, 16);
+  }
+
+  const emailSeed = sanitizeUsername(email.split("@")[0] ?? "");
+  if (emailSeed.length >= 3) {
+    return emailSeed.slice(0, 16);
+  }
+
+  return "student";
+}
+
+async function resolveUniqueUsername(seed: string): Promise<string> {
+  const normalizedSeed = (seed.trim() || "student").slice(0, 16);
+  let suffix = 0;
+
+  while (suffix < 1000) {
+    const suffixPart = suffix === 0 ? "" : String(suffix);
+    const baseLength = Math.max(3, 16 - suffixPart.length);
+    const candidate = `${normalizedSeed.slice(0, baseLength)}${suffixPart}`;
+    const existing = await UserModel.exists({ username: candidate });
+    if (!existing) {
+      return candidate;
+    }
+    suffix += 1;
+  }
+
+  throw new AppError(
+    StatusCodes.INTERNAL_SERVER_ERROR,
+    "Unable to generate username",
+  );
+}
+
+function isBcryptHash(value: string): boolean {
+  return /^\$2[aby]\$\d{2}\$/.test(value);
+}
+
+async function verifyPasswordWithLegacyMigration(
+  user: {
+    password: string;
+    markModified?: (path: string) => void;
+    save: () => Promise<unknown>;
+  },
+  inputPassword: string,
+): Promise<boolean> {
+  if (isBcryptHash(user.password)) {
+    return bcrypt.compare(inputPassword, user.password);
+  }
+
+  if (user.password !== inputPassword) {
+    return false;
+  }
+
+  user.password = inputPassword;
+  if (typeof user.markModified === "function") {
+    user.markModified("password");
+  }
+  await user.save();
+
+  return true;
+}
+
 export const authService = {
+  async registerStudent(payload: StudentRegisterBody): Promise<LoginResponse> {
+    const normalizedEmail = payload.email.toLowerCase().trim();
+
+    const existingEmail = await UserModel.exists({ email: normalizedEmail });
+    if (existingEmail) {
+      throw new AppError(StatusCodes.CONFLICT, "Email already registered");
+    }
+
+    const usernameSeed = buildUsernameSeed(payload.name, normalizedEmail);
+    const username = await resolveUniqueUsername(usernameSeed);
+
+    const user = await UserModel.create({
+      name: payload.name.trim(),
+      email: normalizedEmail,
+      username,
+      password: payload.password,
+      role: "student",
+      status: "active",
+      phone: payload.phone?.trim() ?? "",
+      enrolled_courses_count: 0,
+      publish_status: "published",
+      isVerified: true,
+    });
+
+    const { access_token, refresh_token } = await issueTokensForUser(user);
+
+    return {
+      access_token,
+      refresh_token,
+      token: access_token,
+      user: toAuthUser(user),
+    };
+  },
+
   async loginStudent(payload: StudentLoginBody): Promise<LoginResponse> {
     const user = await UserModel.findOne({
       email: payload.email.toLowerCase(),
@@ -118,7 +223,10 @@ export const authService = {
       throw unauthorizedError;
     }
 
-    const isPasswordMatch = await bcrypt.compare(payload.password, user.password);
+    const isPasswordMatch = await verifyPasswordWithLegacyMigration(
+      user,
+      payload.password,
+    );
 
     if (!isPasswordMatch) {
       throw unauthorizedError;
@@ -151,7 +259,10 @@ export const authService = {
       throw unauthorizedError;
     }
 
-    const isPasswordMatch = await bcrypt.compare(payload.password, user.password);
+    const isPasswordMatch = await verifyPasswordWithLegacyMigration(
+      user,
+      payload.password,
+    );
     if (!isPasswordMatch) {
       throw unauthorizedError;
     }

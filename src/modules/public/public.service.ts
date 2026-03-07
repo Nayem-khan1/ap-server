@@ -5,7 +5,7 @@ import {
   getPaginationOptions,
   PaginationMeta,
 } from "../../utils/pagination";
-import { CourseModel } from "../course/model";
+import { CourseCategoryModel, CourseModel } from "../course/model";
 import { BlogModel } from "../blog/model";
 import { EventModel } from "../event/model";
 import { UserModel } from "../user/model";
@@ -13,6 +13,7 @@ import { IssuedCertificateModel } from "../certificate/model";
 import { certificateService } from "../certificate/service";
 import {
   ListBlogsQuery,
+  ListCourseCategoriesQuery,
   ListCoursesQuery,
   ListEventsQuery,
   ListInstructorsQuery,
@@ -44,6 +45,17 @@ function localizeCourse(course: Record<string, unknown>, lang: Language) {
   };
 }
 
+function localizeCourseCategory(
+  category: Record<string, unknown>,
+  lang: Language,
+): Record<string, unknown> {
+  return {
+    ...category,
+    title: lang === "bn" ? category.title_bn : category.title_en,
+    description: lang === "bn" ? category.description_bn : category.description_en,
+  };
+}
+
 function localizeBlog(blog: Record<string, unknown>, lang: Language) {
   return {
     ...blog,
@@ -71,8 +83,16 @@ export const publicService = {
       publish_status: "published",
     };
 
-    if (query.grade) {
-      filter.grade = query.grade;
+    if (query.category_id) {
+      filter.category_id = query.category_id;
+    }
+
+    if (query.price_type === "free") {
+      filter.is_free = true;
+    }
+
+    if (query.price_type === "paid") {
+      filter.is_free = false;
     }
 
     if (
@@ -97,17 +117,92 @@ export const publicService = {
       CourseModel.countDocuments(filter),
     ]);
 
-    const items = courses.map((course) =>
-      localizeCourse(
-        course.toJSON() as Record<string, unknown>,
-        query.lang as Language,
+    const categoryIds = Array.from(
+      new Set(
+        courses
+          .map((course) => String(course.category_id || "").trim())
+          .filter(Boolean),
       ),
     );
+
+    const categories = categoryIds.length
+      ? await CourseCategoryModel.find({
+          _id: { $in: categoryIds },
+          publish_status: "published",
+        })
+      : [];
+
+    const categoryMap = new Map(
+      categories.map((category) => {
+        const item = category.toJSON() as Record<string, unknown>;
+        return [String(item.id), item] as const;
+      }),
+    );
+
+    const items = courses.map((course) => {
+      const courseJson = course.toJSON() as Record<string, unknown>;
+      const localizedCourse = localizeCourse(courseJson, query.lang as Language);
+      const category = categoryMap.get(String(courseJson.category_id ?? ""));
+
+      return {
+        ...localizedCourse,
+        category_title: category
+          ? String(
+              (query.lang === "bn" ? category.title_bn : category.title_en) ??
+                courseJson.category_id ??
+                "",
+            )
+          : String(courseJson.category_id ?? ""),
+        category_slug: category ? String(category.slug ?? "") : "",
+      };
+    });
 
     return {
       items,
       pagination: getPaginationMeta(page, page_size, total),
     };
+  },
+
+  async listCourseCategories(
+    query: ListCourseCategoriesQuery,
+  ): Promise<Record<string, unknown>[]> {
+    const publishedCategoryIds = await CourseModel.distinct("category_id", {
+      publish_status: "published",
+    });
+
+    const categoryIds = publishedCategoryIds
+      .map((item) => String(item || "").trim())
+      .filter(Boolean);
+
+    if (!categoryIds.length) {
+      return [];
+    }
+
+    const categories = await CourseCategoryModel.find({
+      _id: { $in: categoryIds },
+      publish_status: "published",
+    }).sort({ updatedAt: -1 });
+
+    const localizedItems = categories.map((category) =>
+      localizeCourseCategory(
+        category.toJSON() as Record<string, unknown>,
+        query.lang as Language,
+      ),
+    );
+
+    const foundCategoryIds = new Set(
+      localizedItems.map((item) => String(item["id"] ?? "")),
+    );
+    const fallbackItems = categoryIds
+      .filter((categoryId) => !foundCategoryIds.has(categoryId))
+      .map((categoryId) => ({
+        id: categoryId,
+        slug: categoryId,
+        title: categoryId,
+        description: "",
+      }));
+
+    return [...localizedItems, ...fallbackItems];
   },
 
   async getCourseBySlug(
@@ -123,7 +218,22 @@ export const publicService = {
       throw new AppError(StatusCodes.NOT_FOUND, "Course not found");
     }
 
-    return localizeCourse(course.toJSON() as Record<string, unknown>, lang);
+    const courseJson = course.toJSON() as Record<string, unknown>;
+    const category = await CourseCategoryModel.findOne({
+      _id: String(courseJson.category_id ?? ""),
+      publish_status: "published",
+    });
+    const categoryJson = category
+      ? (category.toJSON() as Record<string, unknown>)
+      : null;
+
+    return {
+      ...localizeCourse(courseJson, lang),
+      category_title: categoryJson
+        ? String((lang === "bn" ? categoryJson.title_bn : categoryJson.title_en) ?? "")
+        : String(courseJson.category_id ?? ""),
+      category_slug: categoryJson ? String(categoryJson.slug ?? "") : "",
+    };
   },
 
   async listBlogs(

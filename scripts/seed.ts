@@ -1,10 +1,17 @@
-import { connectDatabase } from "../src/config/database";
+﻿import { connectDatabase } from "../src/config/database";
 import { logger } from "../src/config/logger";
 import { UserModel } from "../src/modules/user/model";
-import { CourseCategoryModel, CourseModel, CourseModuleModel } from "../src/modules/course/model";
+import {
+  CourseCategoryModel,
+  CourseModel,
+  CourseModuleModel,
+} from "../src/modules/course/model";
 import { LessonContentModel, LessonModel } from "../src/modules/lesson/model";
 import { EnrollmentModel, ProgressModel } from "../src/modules/enrollment/model";
-import { PaymentModel, PaymentTransactionLogModel } from "../src/modules/payment/model";
+import {
+  PaymentModel,
+  PaymentTransactionLogModel,
+} from "../src/modules/payment/model";
 import { CouponModel } from "../src/modules/coupon/model";
 import { BlogModel } from "../src/modules/blog/model";
 import { EventModel, EventRegistrationModel } from "../src/modules/event/model";
@@ -15,9 +22,52 @@ import {
 } from "../src/modules/certificate/model";
 import { SettingsModel } from "../src/modules/settings/model";
 
-function randomFrom<T>(items: T[]): T {
-  return items[Math.floor(Math.random() * items.length)];
-}
+type SeedLessonDefinition = {
+  title_en: string;
+  title_bn: string;
+  youtube: string;
+  duration?: string;
+};
+
+type SeedModuleDefinition = {
+  title_en: string;
+  title_bn: string;
+  lessons: SeedLessonDefinition[];
+};
+
+type SeedCourseDefinition = {
+  title_en: string;
+  title_bn: string;
+  subtitle_en: string;
+  subtitle_bn: string;
+  slug: string;
+  category_slug: string;
+  intro_video_url: string;
+  description_en: string;
+  description_bn: string;
+  requirements_en: string[];
+  requirements_bn: string[];
+  learning_objectives_en: string[];
+  learning_objectives_bn: string[];
+  targeted_audience_en: string[];
+  targeted_audience_bn: string[];
+  faqs: Array<{
+    question_en: string;
+    answer_en: string;
+    question_bn: string;
+    answer_bn: string;
+  }>;
+  instructor_index: number;
+  level: "beginner" | "intermediate" | "advanced" | "all_levels";
+  language: string;
+  grade: string;
+  duration: string;
+  is_free: boolean;
+  price: number;
+  discount_price: number;
+  publish_status: "draft" | "published";
+  modules: SeedModuleDefinition[];
+};
 
 async function runSeed() {
   await connectDatabase();
@@ -52,7 +102,7 @@ async function runSeed() {
     status: "active",
   });
 
-  const instructors = await UserModel.insertMany([
+  const instructors = await UserModel.create([
     {
       name: "Dr. Farhana Ahmed",
       email: "farhana@astronomypathshala.com",
@@ -60,7 +110,7 @@ async function runSeed() {
       password: "Instructor@123",
       role: "instructor",
       status: "active",
-      bio: "Astrophysics mentor",
+      bio: "Astrophysics mentor focused on making complex concepts simple.",
       specialization: "Stellar Evolution",
       publish_status: "published",
     },
@@ -71,107 +121,511 @@ async function runSeed() {
       password: "Instructor@123",
       role: "instructor",
       status: "active",
-      bio: "Olympiad trainer",
+      bio: "Olympiad trainer with practical astronomy teaching experience.",
       specialization: "Observational Astronomy",
       publish_status: "published",
     },
   ]);
 
-  const students = await UserModel.insertMany(
+  const students = await UserModel.create(
     Array.from({ length: 10 }).map((_, index) => ({
       name: `Student ${index + 1}`,
       email: `student${index + 1}@astronomypathshala.com`,
       username: `student${index + 1}`,
       password: "Student@123",
       role: "student",
-      status: index % 4 === 0 ? "inactive" : "active",
+      status: "active",
       phone: `+8801700000${String(index + 1).padStart(3, "0")}`,
       publish_status: "published",
       enrolled_courses_count: 0,
     })),
   );
 
-  const categories = await CourseCategoryModel.insertMany(
-    Array.from({ length: 5 }).map((_, index) => ({
-      title_en: `Category ${index + 1}`,
-      title_bn: `ক্যাটাগরি ${index + 1}`,
-      description_en: `Category ${index + 1} description`,
-      description_bn: `ক্যাটাগরি ${index + 1} বর্ণনা`,
-      slug: `category-${index + 1}`,
+  const categories = await CourseCategoryModel.insertMany([
+    {
+      title_en: "Astronomy",
+      title_bn: "জ্যোতির্বিজ্ঞান",
+      description_en: "Core astronomy concepts for beginners and enthusiasts.",
+      description_bn: "শিক্ষার্থী ও আগ্রহীদের জন্য জ্যোতির্বিজ্ঞানের মূল ধারণা।",
+      slug: "astronomy",
       thumbnail: "",
-      publish_status: index % 2 === 0 ? "published" : "draft",
-    })),
-  );
-
-  const courses = await CourseModel.insertMany(
-    Array.from({ length: 5 }).map((_, index) => ({
-      title_en: `Astronomy Course ${index + 1}`,
-      title_bn: `জ্যোতির্বিজ্ঞান কোর্স ${index + 1}`,
-      subtitle_en: `Subtitle ${index + 1}`,
-      subtitle_bn: `সাবটাইটেল ${index + 1}`,
-      slug: `astronomy-course-${index + 1}`,
-      category_id: categories[index % categories.length].id,
-      thumbnail: "",
-      intro_video_url: "https://youtu.be/dQw4w9WgXcQ",
-      description_en: `Comprehensive astronomy course ${index + 1}`,
-      description_bn: `সম্পূর্ণ জ্যোতির্বিজ্ঞান কোর্স ${index + 1}`,
-      requirements_en: ["Curiosity"],
-      requirements_bn: ["কৌতূহল"],
-      learning_objectives_en: ["Understand astronomy basics"],
-      learning_objectives_bn: ["জ্যোতির্বিজ্ঞানের বেসিক বোঝা"],
-      targeted_audience_en: ["Students"],
-      targeted_audience_bn: ["শিক্ষার্থী"],
-      faqs: [],
-      instructor_ids: [instructors[index % instructors.length].id],
-      level: randomFrom(["beginner", "intermediate", "advanced", "all_levels"]),
-      language: index % 2 === 0 ? "bn" : "en",
-      duration: `${6 + index} weeks`,
-      total_lessons: 0,
-      is_free: index % 3 === 0,
-      price: index % 3 === 0 ? 0 : 2000 + index * 100,
-      discount_price: index % 3 === 0 ? 0 : 1800 + index * 100,
-      publish_status: index % 2 === 0 ? "published" : "draft",
-    })),
-  );
-
-  for (const course of courses) {
-    const module = await CourseModuleModel.create({
-      course_id: course.id,
-      title_en: `Module for ${course.title_en}`,
-      title_bn: `${course.title_bn} মডিউল`,
-      order_no: 1,
-    });
-
-    const lesson = await LessonModel.create({
-      course_id: course.id,
-      module_id: module.id,
-      module_title_en: module.title_en,
-      module_title_bn: module.title_bn,
-      title_en: `Lesson 1 of ${course.title_en}`,
-      title_bn: `${course.title_bn} এর প্রথম পাঠ`,
-      lesson_type: "video",
-      youtube_unlisted_url: "https://youtu.be/dQw4w9WgXcQ",
-      duration: "15:00",
-      quiz_id: null,
-      smart_note_id: null,
-      order_no: 1,
       publish_status: "published",
+    },
+    {
+      title_en: "Astrophysics",
+      title_bn: "অ্যাস্ট্রোফিজিক্স",
+      description_en: "Physics-driven understanding of celestial objects and systems.",
+      description_bn: "মহাজাগতিক বস্তু ও সিস্টেমের পদার্থবিজ্ঞানভিত্তিক বিশ্লেষণ।",
+      slug: "astrophysics",
+      thumbnail: "",
+      publish_status: "published",
+    },
+    {
+      title_en: "Olympiad Prep",
+      title_bn: "অলিম্পিয়াড প্রস্তুতি",
+      description_en: "Structured preparation for astronomy olympiad problem solving.",
+      description_bn: "অ্যাস্ট্রোনমি অলিম্পিয়াডের সমস্যা সমাধানে কাঠামোবদ্ধ প্রস্তুতি।",
+      slug: "olympiad-prep",
+      thumbnail: "",
+      publish_status: "published",
+    },
+    {
+      title_en: "Observation",
+      title_bn: "পর্যবেক্ষণ",
+      description_en: "Practical skywatching techniques and observation workflows.",
+      description_bn: "প্রায়োগিক আকাশ পর্যবেক্ষণ পদ্ধতি ও ওয়ার্কফ্লো।",
+      slug: "observation",
+      thumbnail: "",
+      publish_status: "published",
+    },
+    {
+      title_en: "Cosmology",
+      title_bn: "কসমোলজি",
+      description_en: "Origin, evolution, and large-scale structure of the universe.",
+      description_bn: "মহাবিশ্বের উৎপত্তি, বিবর্তন ও বৃহৎ-স্কেলের গঠন।",
+      slug: "cosmology",
+      thumbnail: "",
+      publish_status: "published",
+    },
+  ]);
+
+  const categoryBySlug = new Map(categories.map((item) => [item.slug, item] as const));
+
+  const basicAstronomyLessons: SeedLessonDefinition[] = [
+    {
+      title_en: "Basic Physics",
+      title_bn: "বেসিক ফিজিক্স",
+      youtube: "https://youtu.be/0uiqW6CyaeU",
+    },
+    {
+      title_en: "Introduction to Astronomy & Astrophysics",
+      title_bn: "অ্যাস্ট্রোনমি ও অ্যাস্ট্রোফিজিক্স পরিচিতি",
+      youtube: "https://youtu.be/Cc0mOg2uyTc",
+    },
+    {
+      title_en: "Constellations",
+      title_bn: "নক্ষত্রমণ্ডল",
+      youtube: "https://youtu.be/i3lJakBgQpI",
+    },
+    {
+      title_en: "Planets",
+      title_bn: "গ্রহসমূহ",
+      youtube: "https://youtu.be/wmxvggYnLcU",
+    },
+    {
+      title_en: "Galaxies",
+      title_bn: "গ্যালাক্সি",
+      youtube: "https://youtu.be/fp41OMiJlYs",
+    },
+    {
+      title_en: "Stars",
+      title_bn: "নক্ষত্র",
+      youtube: "https://youtu.be/-s4ZWBnDW-0",
+    },
+    {
+      title_en: "Asteroid",
+      title_bn: "গ্রহাণু",
+      youtube: "https://youtu.be/vUu2l7dL9Ic",
+    },
+    {
+      title_en: "Comet",
+      title_bn: "ধূমকেতু",
+      youtube: "https://youtu.be/F2y3TPIap0U",
+    },
+    {
+      title_en: "Meteorite",
+      title_bn: "উল্কাপিণ্ড",
+      youtube: "https://youtu.be/m_mKuOkRXfs",
+    },
+    {
+      title_en: "Astronomical Numbers",
+      title_bn: "জ্যোতির্বৈজ্ঞানিক সংখ্যা",
+      youtube: "https://youtu.be/8Q0PcvOR1SA",
+    },
+  ];
+
+  const courseBlueprints: SeedCourseDefinition[] = [
+    {
+      title_en: "Basic Astronomy Crash Course | Level-01",
+      title_bn: "বেসিক অ্যাস্ট্রোনমি ক্র্যাশ কোর্স | লেভেল-০১",
+      subtitle_en: "Start your astronomy journey with zero prior background.",
+      subtitle_bn: "কোনো পূর্ব অভিজ্ঞতা ছাড়াই জ্যোতির্বিজ্ঞানের যাত্রা শুরু করুন।",
+      slug: "basic-astronomy-crash-course-level-01",
+      category_slug: "astronomy",
+      intro_video_url: "https://youtu.be/0uiqW6CyaeU",
+      description_en:
+        "No matter your background, if the night sky makes you curious this course is for you. This beginner-friendly course explains astronomy fundamentals in simple language and helps you build a strong base in a short time.",
+      description_bn:
+        "আপনার ব্যাকগ্রাউন্ড যেকোনো বিষয়ের হোক, রাতের আকাশ দেখলে যদি মহাবিশ্ব নিয়ে কৌতূহল জাগে, এই কোর্সটি আপনার জন্য। সহজ-সরল ভাষায় জ্যোতির্বিজ্ঞানের বেসিক বিষয়গুলো ব্যাখ্যা করা হয়েছে যাতে অল্প সময়ে একটি শক্ত ভিত্তি তৈরি হয়।",
+      requirements_en: [
+        "Interest in astronomy",
+        "Internet-enabled phone or laptop",
+      ],
+      requirements_bn: [
+        "জ্যোতির্বিজ্ঞানে আগ্রহ",
+        "ইন্টারনেট সংযোগসহ মোবাইল বা ল্যাপটপ",
+      ],
+      learning_objectives_en: [
+        "Understand astronomy fundamentals",
+        "Learn clear explanations for common misconceptions",
+        "Explore interesting facts across major astronomy topics",
+      ],
+      learning_objectives_bn: [
+        "জ্যোতির্বিজ্ঞানের বেসিক বিষয়সমূহ বোঝা",
+        "ভুল তথ্যের বদলে সঠিক ব্যাখ্যা জানা",
+        "বিভিন্ন টপিকের চমকপ্রদ তথ্য শেখা",
+      ],
+      targeted_audience_en: [
+        "Anyone interested in astronomy basics",
+        "Learners from any age and background",
+        "Students planning an astronomy career",
+      ],
+      targeted_audience_bn: [
+        "যারা জ্যোতির্বিজ্ঞানের বেসিক শিখতে আগ্রহী",
+        "যেকোনো বয়স ও ব্যাকগ্রাউন্ডের শিক্ষার্থী",
+        "ভবিষ্যতে জ্যোতির্বিজ্ঞানে ক্যারিয়ার গড়তে ইচ্ছুক শিক্ষার্থী",
+      ],
+      faqs: [
+        {
+          question_en: "Can a complete beginner take this course?",
+          answer_en:
+            "Yes. This course is designed for complete beginners.",
+          question_bn: "একদম বিগিনার কি এই কোর্স করতে পারবে?",
+          answer_bn: "হ্যাঁ, এই কোর্স সম্পূর্ণ বিগিনারদের জন্য ডিজাইন করা।",
+        },
+      ],
+      instructor_index: 0,
+      level: "beginner",
+      language: "bn",
+      grade: "Class 6-12",
+      duration: "6 weeks",
+      is_free: false,
+      price: 1200,
+      discount_price: 999,
+      publish_status: "published",
+      modules: [
+        {
+          title_en: "Foundations",
+          title_bn: "ভিত্তি",
+          lessons: basicAstronomyLessons.slice(0, 5),
+        },
+        {
+          title_en: "Solar System and Deep Space",
+          title_bn: "সৌরজগৎ ও গভীর মহাকাশ",
+          lessons: basicAstronomyLessons.slice(5),
+        },
+      ],
+    },
+    {
+      title_en: "Astrophysics Essentials",
+      title_bn: "অ্যাস্ট্রোফিজিক্স এসেনশিয়ালস",
+      subtitle_en: "Physics tools to interpret stars and galaxies.",
+      subtitle_bn: "নক্ষত্র ও গ্যালাক্সি বোঝার পদার্থবৈজ্ঞানিক ভিত্তি।",
+      slug: "astrophysics-essentials",
+      category_slug: "astrophysics",
+      intro_video_url: "https://youtu.be/Cc0mOg2uyTc",
+      description_en:
+        "Learn the language of astrophysics through practical examples including radiation, stellar structure, and galaxy dynamics.",
+      description_bn:
+        "বিকিরণ, নক্ষত্রের গঠন এবং গ্যালাক্সির গতিশীলতা উদাহরণের মাধ্যমে অ্যাস্ট্রোফিজিক্সের মূল বিষয় শিখুন।",
+      requirements_en: ["Basic algebra", "Curiosity about physics"],
+      requirements_bn: ["প্রাথমিক বীজগণিত", "পদার্থবিজ্ঞানের প্রতি আগ্রহ"],
+      learning_objectives_en: [
+        "Interpret astrophysical quantities",
+        "Connect observation with physical models",
+      ],
+      learning_objectives_bn: [
+        "অ্যাস্ট্রোফিজিক্সের পরিমাপ ব্যাখ্যা করতে পারা",
+        "পর্যবেক্ষণকে মডেলের সাথে যুক্ত করতে পারা",
+      ],
+      targeted_audience_en: ["Senior school and university beginners"],
+      targeted_audience_bn: ["উচ্চমাধ্যমিক ও বিশ্ববিদ্যালয় পর্যায়ের শিক্ষার্থী"],
+      faqs: [],
+      instructor_index: 0,
+      level: "intermediate",
+      language: "en",
+      grade: "Class 11-12",
+      duration: "8 weeks",
+      is_free: false,
+      price: 1800,
+      discount_price: 1499,
+      publish_status: "published",
+      modules: [
+        {
+          title_en: "Astrophysics Core",
+          title_bn: "অ্যাস্ট্রোফিজিক্সের মূল ধারণা",
+          lessons: [
+            {
+              title_en: "Radiation and Spectra",
+              title_bn: "বিকিরণ ও স্পেকট্রা",
+              youtube: "https://youtu.be/Cc0mOg2uyTc",
+            },
+            {
+              title_en: "Stars and Evolution",
+              title_bn: "নক্ষত্র ও বিবর্তন",
+              youtube: "https://youtu.be/-s4ZWBnDW-0",
+            },
+          ],
+        },
+      ],
+    },
+    {
+      title_en: "Olympiad Prep: Astronomy Problem Solving",
+      title_bn: "অলিম্পিয়াড প্রস্তুতি: অ্যাস্ট্রোনমি সমস্যা সমাধান",
+      subtitle_en: "Targeted training for olympiad-style astronomy questions.",
+      subtitle_bn: "অলিম্পিয়াড ধাঁচের অ্যাস্ট্রোনমি সমস্যার লক্ষ্যভিত্তিক প্রস্তুতি।",
+      slug: "olympiad-prep-astronomy-problem-solving",
+      category_slug: "olympiad-prep",
+      intro_video_url: "https://youtu.be/8Q0PcvOR1SA",
+      description_en:
+        "Build analytical speed and confidence with curated olympiad problems and guided solutions.",
+      description_bn:
+        "নির্বাচিত সমস্যা ও ধাপে ধাপে সমাধানের মাধ্যমে অলিম্পিয়াড প্রস্তুতি সম্পন্ন করুন।",
+      requirements_en: ["School-level physics and math"],
+      requirements_bn: ["স্কুল-স্তরের পদার্থবিজ্ঞান ও গণিত"],
+      learning_objectives_en: [
+        "Solve olympiad-level astronomy numericals",
+        "Improve timed problem-solving strategy",
+      ],
+      learning_objectives_bn: [
+        "অলিম্পিয়াড-লেভেলের সংখ্যাত্মক সমস্যা সমাধান করা",
+        "সময়ভিত্তিক সমস্যা সমাধানের দক্ষতা বাড়ানো",
+      ],
+      targeted_audience_en: ["Olympiad aspirants"],
+      targeted_audience_bn: ["অলিম্পিয়াড প্রস্তুতিপ্রার্থী শিক্ষার্থী"],
+      faqs: [],
+      instructor_index: 1,
+      level: "advanced",
+      language: "en",
+      grade: "Class 8-12",
+      duration: "10 weeks",
+      is_free: false,
+      price: 2200,
+      discount_price: 1899,
+      publish_status: "published",
+      modules: [
+        {
+          title_en: "Problem Solving Drills",
+          title_bn: "সমস্যা সমাধান অনুশীলন",
+          lessons: [
+            {
+              title_en: "Astronomical Numbers Drill",
+              title_bn: "জ্যোতির্বৈজ্ঞানিক সংখ্যা অনুশীলন",
+              youtube: "https://youtu.be/8Q0PcvOR1SA",
+            },
+            {
+              title_en: "Planetary Motion Challenge",
+              title_bn: "গ্রহগতির সমস্যা",
+              youtube: "https://youtu.be/wmxvggYnLcU",
+            },
+          ],
+        },
+      ],
+    },
+    {
+      title_en: "Night Sky Observation Workshop",
+      title_bn: "রাতের আকাশ পর্যবেক্ষণ কর্মশালা",
+      subtitle_en: "Hands-on guide to planning and recording sky observations.",
+      subtitle_bn: "আকাশ পর্যবেক্ষণ পরিকল্পনা ও রেকর্ড করার হাতে-কলমে নির্দেশনা।",
+      slug: "night-sky-observation-workshop",
+      category_slug: "observation",
+      intro_video_url: "https://youtu.be/i3lJakBgQpI",
+      description_en:
+        "Learn practical stargazing techniques, constellation tracking, and observation journaling workflows.",
+      description_bn:
+        "নক্ষত্র পর্যবেক্ষণ কৌশল, নক্ষত্রমণ্ডল শনাক্তকরণ এবং পর্যবেক্ষণ জার্নালিং শিখুন।",
+      requirements_en: ["Clear sky access", "Basic smartphone camera"],
+      requirements_bn: [
+        "পরিষ্কার আকাশে পর্যবেক্ষণের সুযোগ",
+        "প্রাথমিক স্মার্টফোন ক্যামেরা",
+      ],
+      learning_objectives_en: [
+        "Identify key constellations",
+        "Create useful observation logs",
+      ],
+      learning_objectives_bn: [
+        "গুরুত্বপূর্ণ নক্ষত্রমণ্ডল শনাক্ত করা",
+        "কার্যকর পর্যবেক্ষণ লগ তৈরি করা",
+      ],
+      targeted_audience_en: ["Beginner observers", "Amateur skywatchers"],
+      targeted_audience_bn: ["বিগিনার পর্যবেক্ষক", "শখের আকাশ পর্যবেক্ষক"],
+      faqs: [],
+      instructor_index: 1,
+      level: "beginner",
+      language: "bn",
+      grade: "All",
+      duration: "4 weeks",
+      is_free: true,
+      price: 0,
+      discount_price: 0,
+      publish_status: "published",
+      modules: [
+        {
+          title_en: "Observation Practice",
+          title_bn: "পর্যবেক্ষণ অনুশীলন",
+          lessons: [
+            {
+              title_en: "Constellations in Practice",
+              title_bn: "নক্ষত্রমণ্ডল চিহ্নিতকরণ",
+              youtube: "https://youtu.be/i3lJakBgQpI",
+            },
+            {
+              title_en: "Tracking Meteorite Events",
+              title_bn: "উল্কাপিণ্ড ঘটনা পর্যবেক্ষণ",
+              youtube: "https://youtu.be/m_mKuOkRXfs",
+            },
+          ],
+        },
+      ],
+    },
+    {
+      title_en: "Cosmology Foundations",
+      title_bn: "কসমোলজির ভিত্তি",
+      subtitle_en: "Understand the origin, structure, and fate of the universe.",
+      subtitle_bn: "মহাবিশ্বের উৎপত্তি, গঠন ও পরিণতি নিয়ে ভিত্তিমূলক আলোচনা।",
+      slug: "cosmology-foundations",
+      category_slug: "cosmology",
+      intro_video_url: "https://youtu.be/fp41OMiJlYs",
+      description_en:
+        "Explore the big picture of the cosmos, including expansion, large-scale structures, and open cosmological questions.",
+      description_bn:
+        "মহাবিশ্বের সম্প্রসারণ, বৃহৎ-স্কেলের গঠন এবং কসমোলজির উন্মুক্ত প্রশ্নগুলো বুঝুন।",
+      requirements_en: ["Basic astronomy awareness"],
+      requirements_bn: ["জ্যোতির্বিজ্ঞানের প্রাথমিক ধারণা"],
+      learning_objectives_en: [
+        "Explain major cosmology models",
+        "Understand observational evidence behind cosmology",
+      ],
+      learning_objectives_bn: [
+        "প্রধান কসমোলজি মডেল ব্যাখ্যা করা",
+        "কসমোলজির পর্যবেক্ষণভিত্তিক প্রমাণ বোঝা",
+      ],
+      targeted_audience_en: ["Curious learners and early researchers"],
+      targeted_audience_bn: ["কৌতূহলী শিক্ষার্থী ও প্রারম্ভিক গবেষক"],
+      faqs: [],
+      instructor_index: 0,
+      level: "intermediate",
+      language: "en",
+      grade: "University",
+      duration: "7 weeks",
+      is_free: false,
+      price: 2000,
+      discount_price: 1699,
+      publish_status: "published",
+      modules: [
+        {
+          title_en: "Cosmic Structures",
+          title_bn: "মহাজাগতিক গঠন",
+          lessons: [
+            {
+              title_en: "Galaxies and Clusters",
+              title_bn: "গ্যালাক্সি ও ক্লাস্টার",
+              youtube: "https://youtu.be/fp41OMiJlYs",
+            },
+            {
+              title_en: "Comets, Asteroids and Cosmic Debris",
+              title_bn: "ধূমকেতু, গ্রহাণু ও মহাজাগতিক ধ্বংসাবশেষ",
+              youtube: "https://youtu.be/F2y3TPIap0U",
+            },
+          ],
+        },
+      ],
+    },
+  ];
+
+  const courses: any[] = [];
+
+  for (const definition of courseBlueprints) {
+    const category = categoryBySlug.get(definition.category_slug);
+    if (!category) {
+      throw new Error(`Missing category for ${definition.category_slug}`);
+    }
+
+    const course = await CourseModel.create({
+      title_en: definition.title_en,
+      title_bn: definition.title_bn,
+      subtitle_en: definition.subtitle_en,
+      subtitle_bn: definition.subtitle_bn,
+      slug: definition.slug,
+      category_id: category.id,
+      thumbnail: "",
+      intro_video_url: definition.intro_video_url,
+      description_en: definition.description_en,
+      description_bn: definition.description_bn,
+      requirements_en: definition.requirements_en,
+      requirements_bn: definition.requirements_bn,
+      learning_objectives_en: definition.learning_objectives_en,
+      learning_objectives_bn: definition.learning_objectives_bn,
+      targeted_audience_en: definition.targeted_audience_en,
+      targeted_audience_bn: definition.targeted_audience_bn,
+      faqs: definition.faqs,
+      instructor_ids: [
+        instructors[definition.instructor_index % instructors.length].id,
+      ],
+      level: definition.level,
+      language: definition.language,
+      grade: definition.grade,
+      duration: definition.duration,
+      total_lessons: 0,
+      is_free: definition.is_free,
+      price: definition.price,
+      discount_price: definition.discount_price,
+      publish_status: definition.publish_status,
     });
 
-    await LessonContentModel.create({
-      lesson_id: lesson.id,
-      type: "video",
-      order_no: 1,
-      video_url: lesson.youtube_unlisted_url,
-      video_duration: lesson.duration,
-      unlock_condition: "auto_unlock",
-    });
+    let totalLessons = 0;
 
-    course.total_lessons = 1;
+    for (let moduleIndex = 0; moduleIndex < definition.modules.length; moduleIndex += 1) {
+      const moduleDefinition = definition.modules[moduleIndex];
+      const module = await CourseModuleModel.create({
+        course_id: course.id,
+        title_en: moduleDefinition.title_en,
+        title_bn: moduleDefinition.title_bn,
+        order_no: moduleIndex + 1,
+      });
+
+      for (let lessonIndex = 0; lessonIndex < moduleDefinition.lessons.length; lessonIndex += 1) {
+        const lessonDefinition = moduleDefinition.lessons[lessonIndex];
+        const lesson = await LessonModel.create({
+          course_id: course.id,
+          module_id: module.id,
+          module_title_en: module.title_en,
+          module_title_bn: module.title_bn,
+          title_en: lessonDefinition.title_en,
+          title_bn: lessonDefinition.title_bn,
+          lesson_type: "video",
+          youtube_unlisted_url: lessonDefinition.youtube,
+          duration: lessonDefinition.duration ?? "12:00",
+          quiz_id: null,
+          smart_note_id: null,
+          order_no: lessonIndex + 1,
+          publish_status:
+            definition.publish_status === "published" ? "published" : "draft",
+        });
+
+        await LessonContentModel.create({
+          lesson_id: lesson.id,
+          type: "video",
+          order_no: 1,
+          video_url: lessonDefinition.youtube,
+          video_duration: lesson.duration,
+          unlock_condition:
+            moduleIndex === 0 && lessonIndex === 0
+              ? "auto_unlock"
+              : "after_previous_completed",
+        });
+
+        totalLessons += 1;
+      }
+    }
+
+    course.total_lessons = totalLessons;
     await course.save();
+    courses.push(course);
   }
 
   const enrolledCourseSubset = courses.slice(0, 5);
+
   for (let index = 0; index < 10; index += 1) {
     const student = students[index];
     const course = enrolledCourseSubset[index % enrolledCourseSubset.length];
@@ -221,49 +675,98 @@ async function runSeed() {
     }
   }
 
-  await CouponModel.insertMany(
-    Array.from({ length: 1 }).map(() => ({
-      code: "ASTRO10",
-      discount_type: "percentage",
-      discount_value: 10,
-      max_redemption: 200,
-      expires_at: new Date(Date.now() + 45 * 86400000).toISOString(),
-      is_active: true,
-    })),
-  );
+  await CouponModel.create({
+    code: "ASTRO10",
+    discount_type: "percentage",
+    discount_value: 10,
+    max_redemption: 200,
+    expires_at: new Date(Date.now() + 45 * 86400000).toISOString(),
+    is_active: true,
+  });
 
-  await BlogModel.insertMany(
-    Array.from({ length: 3 }).map((_, index) => ({
-      title_en: `Blog Post ${index + 1}`,
-      title_bn: `ব্লগ পোস্ট ${index + 1}`,
-      content_en: `Detailed content for blog post ${index + 1} in English.`.repeat(2),
-      content_bn: `ব্লগ পোস্ট ${index + 1} এর জন্য বিস্তারিত কনটেন্ট।`.repeat(2),
+  await BlogModel.insertMany([
+    {
+      title_en: "How to Start Stargazing in 2026",
+      title_bn: "২০২৬ সালে স্টারগেজিং শুরু করবেন কীভাবে",
+      content_en:
+        "A practical guide for beginners to start stargazing with minimal equipment and clear routines.",
+      content_bn:
+        "কম যন্ত্রপাতি দিয়ে নিয়মিত স্টারগেজিং শুরু করার একটি বাস্তবধর্মী গাইড।",
       category: "Astronomy Tips",
-      tags: ["astronomy", "learning", `post-${index + 1}`],
+      tags: ["astronomy", "beginner"],
       featured_image: "",
-      seo_title: `SEO Blog ${index + 1}`,
-      seo_description: `SEO description for blog post ${index + 1}`,
-      slug: `blog-post-${index + 1}`,
-      author: index % 2 === 0 ? adminUser.name : instructors[0].name,
-      publish_status: index % 2 === 0 ? "published" : "draft",
-    })),
-  );
+      seo_title: "How to Start Stargazing",
+      seo_description: "Beginner-friendly stargazing guide.",
+      slug: "how-to-start-stargazing",
+      author: instructors[1].name,
+      publish_status: "published",
+    },
+    {
+      title_en: "Top 5 Olympiad Astronomy Mistakes",
+      title_bn: "অলিম্পিয়াড অ্যাস্ট্রোনমিতে ৫টি সাধারণ ভুল",
+      content_en:
+        "Common preparation mistakes and how to avoid them while training for olympiad astronomy.",
+      content_bn:
+        "অলিম্পিয়াড প্রস্তুতিতে প্রচলিত ভুল এবং সেগুলো এড়ানোর কৌশল।",
+      category: "Olympiad Prep",
+      tags: ["olympiad", "strategy"],
+      featured_image: "",
+      seo_title: "Olympiad Astronomy Mistakes",
+      seo_description: "Avoid common mistakes in astronomy olympiad preparation.",
+      slug: "top-5-olympiad-astronomy-mistakes",
+      author: instructors[1].name,
+      publish_status: "published",
+    },
+    {
+      title_en: "Understanding Galaxies in Simple Terms",
+      title_bn: "সহজ ভাষায় গ্যালাক্সি বোঝা",
+      content_en:
+        "A clear explanation of galaxy types, structures, and why galaxies matter in modern astronomy.",
+      content_bn:
+        "গ্যালাক্সির ধরন, গঠন এবং আধুনিক জ্যোতির্বিজ্ঞানে এর গুরুত্ব নিয়ে সহজ আলোচনা।",
+      category: "Astrophysics",
+      tags: ["galaxy", "astrophysics"],
+      featured_image: "",
+      seo_title: "Understanding Galaxies",
+      seo_description: "Simple explanation of galaxies and their role in astronomy.",
+      slug: "understanding-galaxies-in-simple-terms",
+      author: instructors[0].name,
+      publish_status: "published",
+    },
+  ]);
 
-  const events = await EventModel.insertMany(
-    Array.from({ length: 5 }).map((_, index) => ({
-      title_en: `Event ${index + 1}`,
-      slug: `event-${index + 1}`,
-      title_bn: `ইভেন্ট ${index + 1}`,
-      description_en: `Event description ${index + 1} `.repeat(4),
-      description_bn: `ইভেন্ট বিবরণ ${index + 1} `.repeat(4),
+  const events = await EventModel.insertMany([
+    {
+      title_en: "Night Sky Observation Camp",
+      slug: "night-sky-observation-camp",
+      title_bn: "নাইট স্কাই অবজারভেশন ক্যাম্প",
+      description_en:
+        "Join a guided observation session with live constellation mapping and telescope practice.",
+      description_bn:
+        "লাইভ নক্ষত্রমণ্ডল ম্যাপিং ও টেলিস্কোপ অনুশীলনসহ গাইডেড পর্যবেক্ষণ সেশন।",
       banner: "",
-      event_date: new Date(Date.now() + (index + 1) * 86400000 * 5).toISOString(),
-      registration_fee: index === 0 ? 0 : 500 + index * 200,
-      max_participants: 100 + index * 50,
+      event_date: new Date(Date.now() + 8 * 86400000).toISOString(),
+      registration_fee: 500,
+      max_participants: 120,
       registered_count: 0,
-      publish_status: index % 2 === 0 ? "published" : "draft",
-    })),
-  );
+      publish_status: "published",
+    },
+    {
+      title_en: "Astronomy Olympiad Strategy Session",
+      slug: "astronomy-olympiad-strategy-session",
+      title_bn: "অ্যাস্ট্রোনমি অলিম্পিয়াড স্ট্র্যাটেজি সেশন",
+      description_en:
+        "Focused strategy session for olympiad candidates with mock problem walkthroughs.",
+      description_bn:
+        "অলিম্পিয়াড শিক্ষার্থীদের জন্য মক সমস্যা সমাধানসহ কৌশলভিত্তিক সেশন।",
+      banner: "",
+      event_date: new Date(Date.now() + 16 * 86400000).toISOString(),
+      registration_fee: 0,
+      max_participants: 200,
+      registered_count: 0,
+      publish_status: "published",
+    },
+  ]);
 
   await EventRegistrationModel.insertMany([
     {
@@ -295,7 +798,7 @@ async function runSeed() {
       linked_course_id: course.id,
       completion_required_percentage: 80,
       template_upload: `https://example.com/template-${index + 1}.pdf`,
-      publish_status: index % 2 === 0 ? "published" : "draft",
+      publish_status: "published",
     })),
   );
 
@@ -319,7 +822,11 @@ async function runSeed() {
       contact_phone: "+8801700000000",
       contact_address: "Dhaka, Bangladesh",
       social_links: [
-        { id: "sl_1", platform: "facebook", url: "https://facebook.com/astronomy-pathshala" },
+        {
+          id: "sl_1",
+          platform: "facebook",
+          url: "https://facebook.com/astronomy-pathshala",
+        },
       ],
     },
     seo: {

@@ -6,6 +6,18 @@ import { publicValidation } from "./public.validation";
 const router = Router();
 
 router.get(
+  "/course-categories",
+  validateRequest(publicValidation.listCourseCategories),
+  publicController.listCourseCategories,
+);
+
+router.get(
+  "/courses/categories",
+  validateRequest(publicValidation.listCourseCategories),
+  publicController.listCourseCategories,
+);
+
+router.get(
   "/courses",
   validateRequest(publicValidation.listCourses),
   publicController.listCourses,

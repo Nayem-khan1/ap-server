@@ -21,6 +21,12 @@ const otpRateLimiter = rateLimit({
 
 const studentAuthRouter = Router();
 studentAuthRouter.post(
+  "/register",
+  loginRateLimiter,
+  validateRequest(authValidation.studentRegister),
+  authController.studentRegister,
+);
+studentAuthRouter.post(
   "/login",
   loginRateLimiter,
   validateRequest(authValidation.studentLogin),
@@ -60,4 +66,3 @@ adminAuthRouter.get(
 );
 
 export { studentAuthRouter, adminAuthRouter };
-
