@@ -148,7 +148,7 @@ export const curriculumController = {
       title_en,
       title_bn,
       order_no: lessonCount + 1,
-      publish_status: "draft",
+      publish_status: "published",
     });
 
     sendResponse({
