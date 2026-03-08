@@ -60,6 +60,7 @@ export interface ICourseModule {
   title_en: string;
   title_bn: string;
   order_no: number;
+  publish_status?: CoursePublishStatus;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -80,7 +81,13 @@ const courseSchema = new Schema<ICourse>(
     title_bn: { type: String, required: true, trim: true },
     subtitle_en: { type: String, required: true, trim: true },
     subtitle_bn: { type: String, required: true, trim: true },
-    slug: { type: String, required: true, unique: true, trim: true, index: true },
+    slug: {
+      type: String,
+      required: true,
+      unique: true,
+      trim: true,
+      index: true,
+    },
     category_id: { type: String, required: true, index: true },
     thumbnail: { type: String, default: "" },
     intro_video_url: { type: String, default: "" },
@@ -106,7 +113,11 @@ const courseSchema = new Schema<ICourse>(
     is_free: { type: Boolean, required: true },
     price: { type: Number, required: true, min: 0 },
     discount_price: { type: Number, required: true, min: 0 },
-    publish_status: { type: String, enum: ["draft", "published"], required: true },
+    publish_status: {
+      type: String,
+      enum: ["draft", "published"],
+      required: true,
+    },
   },
   { timestamps: true },
 );
@@ -121,7 +132,11 @@ const categorySchema = new Schema<ICourseCategory>(
     description_bn: { type: String, required: true },
     slug: { type: String, required: true, unique: true, trim: true },
     thumbnail: { type: String, default: "" },
-    publish_status: { type: String, enum: ["draft", "published"], required: true },
+    publish_status: {
+      type: String,
+      enum: ["draft", "published"],
+      required: true,
+    },
   },
   { timestamps: true },
 );
@@ -132,6 +147,11 @@ const moduleSchema = new Schema<ICourseModule>(
     title_en: { type: String, required: true },
     title_bn: { type: String, required: true },
     order_no: { type: Number, required: true, min: 1 },
+    publish_status: {
+      type: String,
+      enum: ["draft", "published"],
+      default: "draft",
+    },
   },
   { timestamps: true },
 );

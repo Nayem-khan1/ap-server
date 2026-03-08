@@ -4,12 +4,10 @@ import { dashboardRouter } from "../modules/dashboard/route";
 import { usersRouter } from "../modules/user/route";
 import { courseRouter, instructorRouter } from "../modules/course/route";
 import {
-  learningFlowRouter,
-  lessonContentRouter,
+  moduleRouter,
   lessonRouter,
-  quizRouter,
-  smartNoteRouter,
-} from "../modules/lesson/route";
+  contentRouter,
+} from "../modules/curriculum/route";
 import { enrollmentRouter, progressRouter } from "../modules/enrollment/route";
 import { paymentRouter } from "../modules/payment/route";
 import { couponRouter } from "../modules/coupon/route";
@@ -28,11 +26,9 @@ adminRouter.use("/dashboard", dashboardRouter);
 adminRouter.use("/users", usersRouter);
 adminRouter.use("/courses", courseRouter);
 adminRouter.use("/instructors", instructorRouter);
+adminRouter.use("/modules", moduleRouter);
 adminRouter.use("/lessons", lessonRouter);
-adminRouter.use("/lesson-contents", lessonContentRouter);
-adminRouter.use("/learning-flow", learningFlowRouter);
-adminRouter.use("/quiz", quizRouter);
-adminRouter.use("/smart-notes", smartNoteRouter);
+adminRouter.use("/contents", contentRouter);
 adminRouter.use("/enrollments", enrollmentRouter);
 adminRouter.use("/progress", progressRouter);
 adminRouter.use("/payments", paymentRouter);

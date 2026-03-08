@@ -7,7 +7,10 @@ import {
   CourseModuleModel,
 } from "../src/modules/course/model";
 import { LessonContentModel, LessonModel } from "../src/modules/lesson/model";
-import { EnrollmentModel, ProgressModel } from "../src/modules/enrollment/model";
+import {
+  EnrollmentModel,
+  ProgressModel,
+} from "../src/modules/enrollment/model";
 import {
   PaymentModel,
   PaymentTransactionLogModel,
@@ -22,11 +25,32 @@ import {
 } from "../src/modules/certificate/model";
 import { SettingsModel } from "../src/modules/settings/model";
 
+type SeedContentDefinition = {
+  type: "video" | "pdf" | "quiz" | "assignment" | "resource";
+  video_data?: {
+    url: string;
+    duration?: string;
+    provider?: string;
+    thumbnail?: string;
+  };
+  pdf_data?: {
+    title_en: string;
+    title_bn: string;
+    file_url: string;
+    downloadable: boolean;
+  };
+  quiz_data?: {
+    title: string;
+    time_limit: number;
+    pass_mark: number;
+    questions: any[];
+  };
+};
+
 type SeedLessonDefinition = {
   title_en: string;
   title_bn: string;
-  youtube: string;
-  duration?: string;
+  contents: SeedContentDefinition[];
 };
 
 type SeedModuleDefinition = {
@@ -146,7 +170,8 @@ async function runSeed() {
       title_en: "Astronomy",
       title_bn: "জ্যোতির্বিজ্ঞান",
       description_en: "Core astronomy concepts for beginners and enthusiasts.",
-      description_bn: "শিক্ষার্থী ও আগ্রহীদের জন্য জ্যোতির্বিজ্ঞানের মূল ধারণা।",
+      description_bn:
+        "শিক্ষার্থী ও আগ্রহীদের জন্য জ্যোতির্বিজ্ঞানের মূল ধারণা।",
       slug: "astronomy",
       thumbnail: "",
       publish_status: "published",
@@ -154,8 +179,10 @@ async function runSeed() {
     {
       title_en: "Astrophysics",
       title_bn: "অ্যাস্ট্রোফিজিক্স",
-      description_en: "Physics-driven understanding of celestial objects and systems.",
-      description_bn: "মহাজাগতিক বস্তু ও সিস্টেমের পদার্থবিজ্ঞানভিত্তিক বিশ্লেষণ।",
+      description_en:
+        "Physics-driven understanding of celestial objects and systems.",
+      description_bn:
+        "মহাজাগতিক বস্তু ও সিস্টেমের পদার্থবিজ্ঞানভিত্তিক বিশ্লেষণ।",
       slug: "astrophysics",
       thumbnail: "",
       publish_status: "published",
@@ -163,8 +190,10 @@ async function runSeed() {
     {
       title_en: "Olympiad Prep",
       title_bn: "অলিম্পিয়াড প্রস্তুতি",
-      description_en: "Structured preparation for astronomy olympiad problem solving.",
-      description_bn: "অ্যাস্ট্রোনমি অলিম্পিয়াডের সমস্যা সমাধানে কাঠামোবদ্ধ প্রস্তুতি।",
+      description_en:
+        "Structured preparation for astronomy olympiad problem solving.",
+      description_bn:
+        "অ্যাস্ট্রোনমি অলিম্পিয়াডের সমস্যা সমাধানে কাঠামোবদ্ধ প্রস্তুতি।",
       slug: "olympiad-prep",
       thumbnail: "",
       publish_status: "published",
@@ -172,7 +201,8 @@ async function runSeed() {
     {
       title_en: "Observation",
       title_bn: "পর্যবেক্ষণ",
-      description_en: "Practical skywatching techniques and observation workflows.",
+      description_en:
+        "Practical skywatching techniques and observation workflows.",
       description_bn: "প্রায়োগিক আকাশ পর্যবেক্ষণ পদ্ধতি ও ওয়ার্কফ্লো।",
       slug: "observation",
       thumbnail: "",
@@ -181,7 +211,8 @@ async function runSeed() {
     {
       title_en: "Cosmology",
       title_bn: "কসমোলজি",
-      description_en: "Origin, evolution, and large-scale structure of the universe.",
+      description_en:
+        "Origin, evolution, and large-scale structure of the universe.",
       description_bn: "মহাবিশ্বের উৎপত্তি, বিবর্তন ও বৃহৎ-স্কেলের গঠন।",
       slug: "cosmology",
       thumbnail: "",
@@ -189,58 +220,240 @@ async function runSeed() {
     },
   ]);
 
-  const categoryBySlug = new Map(categories.map((item) => [item.slug, item] as const));
+  const categoryBySlug = new Map(
+    categories.map((item) => [item.slug, item] as const),
+  );
 
-  const basicAstronomyLessons: SeedLessonDefinition[] = [
+  const dummyQuizQuestions = [
     {
-      title_en: "Basic Physics",
-      title_bn: "বেসিক ফিজিক্স",
-      youtube: "https://youtu.be/0uiqW6CyaeU",
+      id: "q1",
+      question_en: "What is the primary source of energy for stats?",
+      question_bn: "নক্ষত্রের প্রধান শক্তির উৎস কী?",
+      question_type: "MCQ",
+      options: [
+        "Nuclear Fission",
+        "Nuclear Fusion",
+        "Chemical Burning",
+        "Gravitational Collapse",
+      ],
+      correct_answer: "Nuclear Fusion",
+      explanation_en:
+        "Stars generate energy through nuclear fusion of hydrogen into helium.",
+      explanation_bn: "নক্ষত্র নিউক্লিয়ার ফিউশনের মাধ্যমে শক্তি উৎপন্ন করে।",
     },
     {
-      title_en: "Introduction to Astronomy & Astrophysics",
-      title_bn: "অ্যাস্ট্রোনমি ও অ্যাস্ট্রোফিজিক্স পরিচিতি",
-      youtube: "https://youtu.be/Cc0mOg2uyTc",
+      id: "q2",
+      question_en: "Which of the following is considered a deep space object?",
+      question_bn: "নিচের কোনটি গভীর মহাকাশের বস্তু?",
+      question_type: "MCQ",
+      options: ["Comet", "Asteroid", "Galaxy", "Meteorite"],
+      correct_answer: "Galaxy",
+      explanation_en:
+        "Galaxies are large collections of stars outside our solar system.",
+      explanation_bn: "গ্যালাক্সি আমাদের সৌরজগতের বাইরের বিশাল নক্ষত্রজগৎ।",
     },
     {
-      title_en: "Constellations",
-      title_bn: "নক্ষত্রমণ্ডল",
-      youtube: "https://youtu.be/i3lJakBgQpI",
+      id: "q3",
+      question_en: "True or False: The Sun is a star.",
+      question_bn: "সত্য বা মিথ্যা: সূর্য একটি নক্ষত্র।",
+      question_type: "TRUE_FALSE",
+      options: ["True", "False"],
+      correct_answer: "True",
+      explanation_en: "The Sun is a G-type main-sequence star.",
+      explanation_bn: "সূর্য একটি প্রধান-পর্যায়ের নক্ষত্র।",
+    },
+  ];
+
+  const basicAstronomyModules: SeedModuleDefinition[] = [
+    {
+      title_en: "Foundations of Astronomy",
+      title_bn: "জ্যোতির্বিজ্ঞানের ভিত্তি",
+      lessons: [
+        {
+          title_en: "Basic Physics",
+          title_bn: "বেসিক ফিজিক্স",
+          contents: [
+            {
+              type: "video",
+              video_data: {
+                url: "https://youtu.be/0uiqW6CyaeU",
+                duration: "10:00",
+              },
+            },
+            {
+              type: "pdf",
+              pdf_data: {
+                title_en: "Basic Physics Notes",
+                title_bn: "বেসিক ফিজিক্স নোটস",
+                file_url: "/dummy-notes/basic-physics-notes.pdf",
+                downloadable: true,
+              },
+            },
+            {
+              type: "quiz",
+              quiz_data: {
+                title: "Basic Physics Quiz",
+                time_limit: 10,
+                pass_mark: 60,
+                questions: dummyQuizQuestions,
+              },
+            },
+          ],
+        },
+        {
+          title_en: "Introduction to Astronomy & Astrophysics",
+          title_bn: "অ্যাস্ট্রোনমি ও অ্যাস্ট্রোফিজিক্স পরিচিতি",
+          contents: [
+            {
+              type: "video",
+              video_data: {
+                url: "https://youtu.be/Cc0mOg2uyTc",
+                duration: "12:00",
+              },
+            },
+            {
+              type: "pdf",
+              pdf_data: {
+                title_en: "Astronomy Intro Notes",
+                title_bn: "অ্যাস্ট্রোনমি ইন্ট্রো নোটস",
+                file_url: "/dummy-notes/astronomy-intro-notes.pdf",
+                downloadable: true,
+              },
+            },
+            {
+              type: "quiz",
+              quiz_data: {
+                title: "Intro Quiz",
+                time_limit: 10,
+                pass_mark: 60,
+                questions: dummyQuizQuestions,
+              },
+            },
+          ],
+        },
+      ],
     },
     {
-      title_en: "Planets",
-      title_bn: "গ্রহসমূহ",
-      youtube: "https://youtu.be/wmxvggYnLcU",
+      title_en: "The Night Sky",
+      title_bn: "রাতের আকাশ",
+      lessons: [
+        {
+          title_en: "Constellations",
+          title_bn: "নক্ষত্রমণ্ডল",
+          contents: [
+            {
+              type: "video",
+              video_data: { url: "https://youtu.be/i3lJakBgQpI" },
+            },
+          ],
+        },
+        {
+          title_en: "Planets",
+          title_bn: "গ্রহসমূহ",
+          contents: [
+            {
+              type: "video",
+              video_data: { url: "https://youtu.be/wmxvggYnLcU" },
+            },
+            {
+              type: "pdf",
+              pdf_data: {
+                title_en: "Planets Notes",
+                title_bn: "গ্রহ নোটস",
+                file_url: "/dummy-notes/planets-notes.pdf",
+                downloadable: true,
+              },
+            },
+          ],
+        },
+        {
+          title_en: "Stars",
+          title_bn: "নক্ষত্র",
+          contents: [
+            {
+              type: "video",
+              video_data: { url: "https://youtu.be/-s4ZWBnDW-0" },
+            },
+            {
+              type: "pdf",
+              pdf_data: {
+                title_en: "Stars Notes",
+                title_bn: "নক্ষত্র নোটস",
+                file_url: "/dummy-notes/stars-notes.pdf",
+                downloadable: true,
+              },
+            },
+          ],
+        },
+      ],
     },
     {
-      title_en: "Galaxies",
-      title_bn: "গ্যালাক্সি",
-      youtube: "https://youtu.be/fp41OMiJlYs",
+      title_en: "Deep Space Objects",
+      title_bn: "গভীর মহাকাশের বস্তু",
+      lessons: [
+        {
+          title_en: "Galaxies",
+          title_bn: "গ্যালাক্সি",
+          contents: [
+            {
+              type: "video",
+              video_data: { url: "https://youtu.be/fp41OMiJlYs" },
+            },
+          ],
+        },
+      ],
     },
     {
-      title_en: "Stars",
-      title_bn: "নক্ষত্র",
-      youtube: "https://youtu.be/-s4ZWBnDW-0",
+      title_en: "Small Solar System Bodies",
+      title_bn: "সৌরজগতের ক্ষুদ্র বস্তু",
+      lessons: [
+        {
+          title_en: "Asteroid",
+          title_bn: "গ্রহাণু",
+          contents: [
+            {
+              type: "video",
+              video_data: { url: "https://youtu.be/vUu2l7dL9Ic" },
+            },
+          ],
+        },
+        {
+          title_en: "Comet",
+          title_bn: "ধূমকেতু",
+          contents: [
+            {
+              type: "video",
+              video_data: { url: "https://youtu.be/F2y3TPIap0U" },
+            },
+          ],
+        },
+        {
+          title_en: "Meteorite",
+          title_bn: "উল্কাপিণ্ড",
+          contents: [
+            {
+              type: "video",
+              video_data: { url: "https://youtu.be/m_mKuOkRXfs" },
+            },
+          ],
+        },
+      ],
     },
     {
-      title_en: "Asteroid",
-      title_bn: "গ্রহাণু",
-      youtube: "https://youtu.be/vUu2l7dL9Ic",
-    },
-    {
-      title_en: "Comet",
-      title_bn: "ধূমকেতু",
-      youtube: "https://youtu.be/F2y3TPIap0U",
-    },
-    {
-      title_en: "Meteorite",
-      title_bn: "উল্কাপিণ্ড",
-      youtube: "https://youtu.be/m_mKuOkRXfs",
-    },
-    {
-      title_en: "Astronomical Numbers",
-      title_bn: "জ্যোতির্বৈজ্ঞানিক সংখ্যা",
-      youtube: "https://youtu.be/8Q0PcvOR1SA",
+      title_en: "Astronomical Measurements",
+      title_bn: "জ্যোতির্বৈজ্ঞানিক পরিমাপ",
+      lessons: [
+        {
+          title_en: "Astronomical Numbers",
+          title_bn: "জ্যোতির্বৈজ্ঞানিক সংখ্যা",
+          contents: [
+            {
+              type: "video",
+              video_data: { url: "https://youtu.be/8Q0PcvOR1SA" },
+            },
+          ],
+        },
+      ],
     },
   ];
 
@@ -249,14 +462,15 @@ async function runSeed() {
       title_en: "Basic Astronomy Crash Course | Level-01",
       title_bn: "বেসিক অ্যাস্ট্রোনমি ক্র্যাশ কোর্স | লেভেল-০১",
       subtitle_en: "Start your astronomy journey with zero prior background.",
-      subtitle_bn: "কোনো পূর্ব অভিজ্ঞতা ছাড়াই জ্যোতির্বিজ্ঞানের যাত্রা শুরু করুন।",
+      subtitle_bn:
+        "কোনো পূর্ব অভিজ্ঞতা ছাড়াই জ্যোতির্বিজ্ঞানের যাত্রা শুরু করুন।",
       slug: "basic-astronomy-crash-course-level-01",
       category_slug: "astronomy",
       intro_video_url: "https://youtu.be/0uiqW6CyaeU",
       description_en:
         "No matter your background, if the night sky makes you curious this course is for you. This beginner-friendly course explains astronomy fundamentals in simple language and helps you build a strong base in a short time.",
       description_bn:
-        "আপনার ব্যাকগ্রাউন্ড যেকোনো বিষয়ের হোক, রাতের আকাশ দেখলে যদি মহাবিশ্ব নিয়ে কৌতূহল জাগে, এই কোর্সটি আপনার জন্য। সহজ-সরল ভাষায় জ্যোতির্বিজ্ঞানের বেসিক বিষয়গুলো ব্যাখ্যা করা হয়েছে যাতে অল্প সময়ে একটি শক্ত ভিত্তি তৈরি হয়।",
+        "আপনার ব্যাকগ্রাউন্ড যেকোনো বিষয়ের হতে পারে কিন্তু আপনাকে অবশ্যই রাতের আকাশের দিকে তাকালে একবার হলেও এই মহাবিশ্ব সম্পর্কে ভাবায়, তাইনা? মনে জাগে হাজারো প্রশ্ন এবং কৌতূহল। আর তাই অনেকেই আমরা হন্য হয়ে খুঁজি কীভাবে এই বিষয়ের অন্তত বেসিক ধারণাটি নেয়া যায়। ঠিক তাই জ্যোতির্বিজ্ঞানে আপনার যাত্রা আরো সহজ করে তুলতে আমরা আপনাদের জন্য নিয়ে এসেছি জ্যোতির্বিজ্ঞানের বেসিক কোর্স। এই কোর্সটিতে আমরা জ্যোতির্বিজ্ঞানের বেসিক বিষয়গুলো সহজভাবে ব্যাখ্যা করেছি।",
       requirements_en: [
         "Interest in astronomy",
         "Internet-enabled phone or laptop",
@@ -267,29 +481,30 @@ async function runSeed() {
       ],
       learning_objectives_en: [
         "Understand astronomy fundamentals",
-        "Learn clear explanations for common misconceptions",
-        "Explore interesting facts across major astronomy topics",
+        "Space and astronomical objects",
+        "Explanation of cosmic phenomena",
+        "Important astronomical facts",
       ],
       learning_objectives_bn: [
-        "জ্যোতির্বিজ্ঞানের বেসিক বিষয়সমূহ বোঝা",
-        "ভুল তথ্যের বদলে সঠিক ব্যাখ্যা জানা",
-        "বিভিন্ন টপিকের চমকপ্রদ তথ্য শেখা",
+        "জ্যোতির্বিজ্ঞানের বেসিক ধারণা",
+        "মহাকাশ ও জ্যোতির্বৈজ্ঞানিক বস্তুসমূহ",
+        "বিভিন্ন মহাজাগতিক ঘটনাবলীর ব্যাখ্যা",
+        "জ্যোতির্বিজ্ঞানের গুরুত্বপূর্ণ তথ্য",
       ],
       targeted_audience_en: [
         "Anyone interested in astronomy basics",
         "Learners from any age and background",
-        "Students planning an astronomy career",
+        "Students without science background can join",
       ],
       targeted_audience_bn: [
-        "যারা জ্যোতির্বিজ্ঞানের বেসিক শিখতে আগ্রহী",
-        "যেকোনো বয়স ও ব্যাকগ্রাউন্ডের শিক্ষার্থী",
-        "ভবিষ্যতে জ্যোতির্বিজ্ঞানে ক্যারিয়ার গড়তে ইচ্ছুক শিক্ষার্থী",
+        "যারা জ্যোতির্বিজ্ঞানের বেসিক শিখতে চায়",
+        "যেকোনো বয়সের শিক্ষার্থী",
+        "Science background না থাকলেও করা যাবে",
       ],
       faqs: [
         {
           question_en: "Can a complete beginner take this course?",
-          answer_en:
-            "Yes. This course is designed for complete beginners.",
+          answer_en: "Yes. This course is designed for complete beginners.",
           question_bn: "একদম বিগিনার কি এই কোর্স করতে পারবে?",
           answer_bn: "হ্যাঁ, এই কোর্স সম্পূর্ণ বিগিনারদের জন্য ডিজাইন করা।",
         },
@@ -303,18 +518,7 @@ async function runSeed() {
       price: 1200,
       discount_price: 999,
       publish_status: "published",
-      modules: [
-        {
-          title_en: "Foundations",
-          title_bn: "ভিত্তি",
-          lessons: basicAstronomyLessons.slice(0, 5),
-        },
-        {
-          title_en: "Solar System and Deep Space",
-          title_bn: "সৌরজগৎ ও গভীর মহাকাশ",
-          lessons: basicAstronomyLessons.slice(5),
-        },
-      ],
+      modules: basicAstronomyModules,
     },
     {
       title_en: "Astrophysics Essentials",
@@ -339,7 +543,9 @@ async function runSeed() {
         "পর্যবেক্ষণকে মডেলের সাথে যুক্ত করতে পারা",
       ],
       targeted_audience_en: ["Senior school and university beginners"],
-      targeted_audience_bn: ["উচ্চমাধ্যমিক ও বিশ্ববিদ্যালয় পর্যায়ের শিক্ষার্থী"],
+      targeted_audience_bn: [
+        "উচ্চমাধ্যমিক ও বিশ্ববিদ্যালয় পর্যায়ের শিক্ষার্থী",
+      ],
       faqs: [],
       instructor_index: 0,
       level: "intermediate",
@@ -358,12 +564,22 @@ async function runSeed() {
             {
               title_en: "Radiation and Spectra",
               title_bn: "বিকিরণ ও স্পেকট্রা",
-              youtube: "https://youtu.be/Cc0mOg2uyTc",
+              contents: [
+                {
+                  type: "video",
+                  video_data: { url: "https://youtu.be/Cc0mOg2uyTc" },
+                },
+              ],
             },
             {
               title_en: "Stars and Evolution",
               title_bn: "নক্ষত্র ও বিবর্তন",
-              youtube: "https://youtu.be/-s4ZWBnDW-0",
+              contents: [
+                {
+                  type: "video",
+                  video_data: { url: "https://youtu.be/-s4ZWBnDW-0" },
+                },
+              ],
             },
           ],
         },
@@ -373,7 +589,8 @@ async function runSeed() {
       title_en: "Olympiad Prep: Astronomy Problem Solving",
       title_bn: "অলিম্পিয়াড প্রস্তুতি: অ্যাস্ট্রোনমি সমস্যা সমাধান",
       subtitle_en: "Targeted training for olympiad-style astronomy questions.",
-      subtitle_bn: "অলিম্পিয়াড ধাঁচের অ্যাস্ট্রোনমি সমস্যার লক্ষ্যভিত্তিক প্রস্তুতি।",
+      subtitle_bn:
+        "অলিম্পিয়াড ধাঁচের অ্যাস্ট্রোনমি সমস্যার লক্ষ্যভিত্তিক প্রস্তুতি।",
       slug: "olympiad-prep-astronomy-problem-solving",
       category_slug: "olympiad-prep",
       intro_video_url: "https://youtu.be/8Q0PcvOR1SA",
@@ -411,12 +628,22 @@ async function runSeed() {
             {
               title_en: "Astronomical Numbers Drill",
               title_bn: "জ্যোতির্বৈজ্ঞানিক সংখ্যা অনুশীলন",
-              youtube: "https://youtu.be/8Q0PcvOR1SA",
+              contents: [
+                {
+                  type: "video",
+                  video_data: { url: "https://youtu.be/8Q0PcvOR1SA" },
+                },
+              ],
             },
             {
               title_en: "Planetary Motion Challenge",
               title_bn: "গ্রহগতির সমস্যা",
-              youtube: "https://youtu.be/wmxvggYnLcU",
+              contents: [
+                {
+                  type: "video",
+                  video_data: { url: "https://youtu.be/wmxvggYnLcU" },
+                },
+              ],
             },
           ],
         },
@@ -426,7 +653,8 @@ async function runSeed() {
       title_en: "Night Sky Observation Workshop",
       title_bn: "রাতের আকাশ পর্যবেক্ষণ কর্মশালা",
       subtitle_en: "Hands-on guide to planning and recording sky observations.",
-      subtitle_bn: "আকাশ পর্যবেক্ষণ পরিকল্পনা ও রেকর্ড করার হাতে-কলমে নির্দেশনা।",
+      subtitle_bn:
+        "আকাশ পর্যবেক্ষণ পরিকল্পনা ও রেকর্ড করার হাতে-কলমে নির্দেশনা।",
       slug: "night-sky-observation-workshop",
       category_slug: "observation",
       intro_video_url: "https://youtu.be/i3lJakBgQpI",
@@ -467,12 +695,22 @@ async function runSeed() {
             {
               title_en: "Constellations in Practice",
               title_bn: "নক্ষত্রমণ্ডল চিহ্নিতকরণ",
-              youtube: "https://youtu.be/i3lJakBgQpI",
+              contents: [
+                {
+                  type: "video",
+                  video_data: { url: "https://youtu.be/i3lJakBgQpI" },
+                },
+              ],
             },
             {
               title_en: "Tracking Meteorite Events",
               title_bn: "উল্কাপিণ্ড ঘটনা পর্যবেক্ষণ",
-              youtube: "https://youtu.be/m_mKuOkRXfs",
+              contents: [
+                {
+                  type: "video",
+                  video_data: { url: "https://youtu.be/m_mKuOkRXfs" },
+                },
+              ],
             },
           ],
         },
@@ -481,7 +719,8 @@ async function runSeed() {
     {
       title_en: "Cosmology Foundations",
       title_bn: "কসমোলজির ভিত্তি",
-      subtitle_en: "Understand the origin, structure, and fate of the universe.",
+      subtitle_en:
+        "Understand the origin, structure, and fate of the universe.",
       subtitle_bn: "মহাবিশ্বের উৎপত্তি, গঠন ও পরিণতি নিয়ে ভিত্তিমূলক আলোচনা।",
       slug: "cosmology-foundations",
       category_slug: "cosmology",
@@ -520,12 +759,22 @@ async function runSeed() {
             {
               title_en: "Galaxies and Clusters",
               title_bn: "গ্যালাক্সি ও ক্লাস্টার",
-              youtube: "https://youtu.be/fp41OMiJlYs",
+              contents: [
+                {
+                  type: "video",
+                  video_data: { url: "https://youtu.be/fp41OMiJlYs" },
+                },
+              ],
             },
             {
               title_en: "Comets, Asteroids and Cosmic Debris",
               title_bn: "ধূমকেতু, গ্রহাণু ও মহাজাগতিক ধ্বংসাবশেষ",
-              youtube: "https://youtu.be/F2y3TPIap0U",
+              contents: [
+                {
+                  type: "video",
+                  video_data: { url: "https://youtu.be/F2y3TPIap0U" },
+                },
+              ],
             },
           ],
         },
@@ -575,7 +824,11 @@ async function runSeed() {
 
     let totalLessons = 0;
 
-    for (let moduleIndex = 0; moduleIndex < definition.modules.length; moduleIndex += 1) {
+    for (
+      let moduleIndex = 0;
+      moduleIndex < definition.modules.length;
+      moduleIndex += 1
+    ) {
       const moduleDefinition = definition.modules[moduleIndex];
       const module = await CourseModuleModel.create({
         course_id: course.id,
@@ -584,8 +837,16 @@ async function runSeed() {
         order_no: moduleIndex + 1,
       });
 
-      for (let lessonIndex = 0; lessonIndex < moduleDefinition.lessons.length; lessonIndex += 1) {
+      for (
+        let lessonIndex = 0;
+        lessonIndex < moduleDefinition.lessons.length;
+        lessonIndex += 1
+      ) {
         const lessonDefinition = moduleDefinition.lessons[lessonIndex];
+        const hasVideos = lessonDefinition.contents?.some(
+          (c) => c.type === "video",
+        );
+
         const lesson = await LessonModel.create({
           course_id: course.id,
           module_id: module.id,
@@ -593,27 +854,30 @@ async function runSeed() {
           module_title_bn: module.title_bn,
           title_en: lessonDefinition.title_en,
           title_bn: lessonDefinition.title_bn,
-          lesson_type: "video",
-          youtube_unlisted_url: lessonDefinition.youtube,
-          duration: lessonDefinition.duration ?? "12:00",
-          quiz_id: null,
-          smart_note_id: null,
           order_no: lessonIndex + 1,
           publish_status:
             definition.publish_status === "published" ? "published" : "draft",
         });
 
-        await LessonContentModel.create({
-          lesson_id: lesson.id,
-          type: "video",
-          order_no: 1,
-          video_url: lessonDefinition.youtube,
-          video_duration: lesson.duration,
-          unlock_condition:
-            moduleIndex === 0 && lessonIndex === 0
-              ? "auto_unlock"
-              : "after_previous_completed",
-        });
+        let contentOrder = 1;
+
+        if (lessonDefinition.contents) {
+          for (const content of lessonDefinition.contents) {
+            await LessonContentModel.create({
+              course_id: course.id,
+              lesson_id: lesson.id,
+              type: content.type,
+              order_no: contentOrder++,
+              video_data: content.video_data,
+              pdf_data: content.pdf_data,
+              quiz_data: content.quiz_data,
+              unlock_condition:
+                moduleIndex === 0 && lessonIndex === 0 && contentOrder === 2
+                  ? "auto_unlock"
+                  : "after_previous_completed",
+            });
+          }
+        }
 
         totalLessons += 1;
       }
@@ -712,7 +976,8 @@ async function runSeed() {
       tags: ["olympiad", "strategy"],
       featured_image: "",
       seo_title: "Olympiad Astronomy Mistakes",
-      seo_description: "Avoid common mistakes in astronomy olympiad preparation.",
+      seo_description:
+        "Avoid common mistakes in astronomy olympiad preparation.",
       slug: "top-5-olympiad-astronomy-mistakes",
       author: instructors[1].name,
       publish_status: "published",
@@ -728,7 +993,8 @@ async function runSeed() {
       tags: ["galaxy", "astrophysics"],
       featured_image: "",
       seo_title: "Understanding Galaxies",
-      seo_description: "Simple explanation of galaxies and their role in astronomy.",
+      seo_description:
+        "Simple explanation of galaxies and their role in astronomy.",
       slug: "understanding-galaxies-in-simple-terms",
       author: instructors[0].name,
       publish_status: "published",

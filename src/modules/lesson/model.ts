@@ -2,7 +2,7 @@ import mongoose, { Model, Schema, model } from "mongoose";
 import { applyDefaultJsonTransform } from "../../utils/mongoose-transform";
 
 export type CoursePublishStatus = "draft" | "published";
-export type ContentType = "video" | "quiz" | "note";
+export type ContentType = "video" | "pdf" | "quiz" | "assignment" | "resource";
 export type QuestionType = "MCQ" | "MULTIPLE_SELECT" | "TRUE_FALSE";
 export type UnlockCondition =
   | "auto_unlock"
@@ -16,15 +16,11 @@ export interface ILesson {
   module_id: string;
   title_en: string;
   title_bn: string;
-  lesson_type: "video";
-  youtube_unlisted_url: string;
-  duration: string;
-  quiz_id: string | null;
-  smart_note_id: string | null;
   order_no: number;
   publish_status: CoursePublishStatus;
   createdAt: Date;
   updatedAt: Date;
+  // No deprecated fields
 }
 
 export interface IQuizQuestion {
@@ -39,25 +35,28 @@ export interface IQuizQuestion {
 }
 
 export interface ILessonContent {
+  course_id?: string;
   lesson_id: string;
   type: ContentType;
   order_no: number;
-  video_url: string;
-  video_duration: string;
-  quiz_title: string;
-  quiz_pass_mark: number;
-  quiz_time_limit: number;
-  quiz_max_attempt: number;
-  quiz_publish_status: CoursePublishStatus;
-  quiz_questions: IQuizQuestion[];
-  note_title_en: string;
-  note_title_bn: string;
-  note_content: string;
-  note_pdf_url: string;
-  note_template: string;
-  note_downloadable: boolean;
-  note_allow_student_personal_note: boolean;
-  note_publish_status: CoursePublishStatus;
+  is_preview?: boolean;
+  video_data?: {
+    url: string;
+    provider?: string;
+    duration?: string;
+    thumbnail?: string;
+  };
+  pdf_data?: {
+    file_url: string;
+    downloadable: boolean;
+  };
+  quiz_data?: {
+    title: string;
+    time_limit: number;
+    pass_mark: number;
+    questions: any[];
+  };
+
   unlock_condition: UnlockCondition;
   createdAt: Date;
   updatedAt: Date;
@@ -89,13 +88,12 @@ const lessonSchema = new Schema<ILesson>(
     module_id: { type: String, required: true, index: true },
     title_en: { type: String, required: true },
     title_bn: { type: String, required: true },
-    lesson_type: { type: String, enum: ["video"], default: "video" },
-    youtube_unlisted_url: { type: String, default: "" },
-    duration: { type: String, default: "" },
-    quiz_id: { type: String, default: null },
-    smart_note_id: { type: String, default: null },
     order_no: { type: Number, required: true, min: 1 },
-    publish_status: { type: String, enum: ["draft", "published"], required: true },
+    publish_status: {
+      type: String,
+      enum: ["draft", "published"],
+      required: true,
+    },
   },
   { timestamps: true },
 );
@@ -104,25 +102,21 @@ lessonSchema.index({ module_id: 1, order_no: 1 }, { unique: true });
 
 const lessonContentSchema = new Schema<ILessonContent>(
   {
+    course_id: { type: String, index: true },
     lesson_id: { type: String, required: true, index: true },
-    type: { type: String, enum: ["video", "quiz", "note"], required: true },
+    type: {
+      type: String,
+      enum: ["video", "pdf", "quiz", "assignment", "resource"],
+      required: true,
+    },
     order_no: { type: Number, required: true, min: 1 },
-    video_url: { type: String, default: "" },
-    video_duration: { type: String, default: "" },
-    quiz_title: { type: String, default: "" },
-    quiz_pass_mark: { type: Number, default: 70, min: 0, max: 100 },
-    quiz_time_limit: { type: Number, default: 0, min: 0 },
-    quiz_max_attempt: { type: Number, default: 1, min: 1 },
-    quiz_publish_status: { type: String, enum: ["draft", "published"], default: "draft" },
-    quiz_questions: { type: [quizQuestionSchema], default: [] },
-    note_title_en: { type: String, default: "" },
-    note_title_bn: { type: String, default: "" },
-    note_content: { type: String, default: "" },
-    note_pdf_url: { type: String, default: "" },
-    note_template: { type: String, default: "" },
-    note_downloadable: { type: Boolean, default: false },
-    note_allow_student_personal_note: { type: Boolean, default: false },
-    note_publish_status: { type: String, enum: ["draft", "published"], default: "draft" },
+    is_preview: { type: Boolean, default: false },
+
+    // V2 Data Mappings
+    video_data: { type: Schema.Types.Mixed },
+    pdf_data: { type: Schema.Types.Mixed },
+    quiz_data: { type: Schema.Types.Mixed },
+
     unlock_condition: {
       type: String,
       enum: ["auto_unlock", "after_previous_completed", "after_quiz_pass"],

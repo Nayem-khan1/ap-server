@@ -12,7 +12,10 @@ interface UploadedFile {
   size: number;
 }
 
-function ensureFile(file: UploadedFile | undefined, fieldName: string): UploadedFile {
+function ensureFile(
+  file: UploadedFile | undefined,
+  fieldName: string,
+): UploadedFile {
   if (!file) {
     throw new AppError(
       StatusCodes.BAD_REQUEST,
@@ -46,6 +49,24 @@ export const uploadController = {
       statusCode: StatusCodes.OK,
       success: true,
       message: "File uploaded successfully",
+      data,
+    });
+  }),
+
+  uploadPdf: catchAsync(async (req: Request, res: Response) => {
+    const file = ensureFile(req.file as UploadedFile | undefined, "file");
+
+    if (file.mimetype !== "application/pdf") {
+      throw new AppError(StatusCodes.BAD_REQUEST, "Only PDF files are allowed");
+    }
+
+    const data = await uploadService.uploadFile(file);
+
+    return sendResponse({
+      res,
+      statusCode: StatusCodes.OK,
+      success: true,
+      message: "PDF uploaded successfully",
       data,
     });
   }),
