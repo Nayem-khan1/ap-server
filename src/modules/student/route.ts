@@ -16,8 +16,16 @@ studentRouter.patch(
   studentController.updateProfile,
 );
 
-studentRouter.get("/dashboard", studentController.getDashboard);
-studentRouter.get("/courses", studentController.getCourses);
+studentRouter.get(
+  "/dashboard",
+  validateRequest(studentValidation.localeQuery),
+  studentController.getDashboard,
+);
+studentRouter.get(
+  "/courses",
+  validateRequest(studentValidation.localeQuery),
+  studentController.getCourses,
+);
 
 studentRouter.post(
   "/courses/:courseId/enroll",

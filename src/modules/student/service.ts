@@ -8,6 +8,22 @@ import { paymentService } from "../payment/service";
 import { UserModel } from "../user/model";
 import { UpdateStudentProfileInput } from "./schema";
 
+type Language = "en" | "bn";
+
+function resolveLocalizedCourseTitle(
+  course: { title_en: string; title_bn: string },
+  lang: Language,
+): string {
+  return lang === "bn" ? course.title_bn : course.title_en;
+}
+
+function resolveLocalizedLessonTitle(
+  lesson: { title_en: string; title_bn: string },
+  lang: Language,
+): string {
+  return lang === "bn" ? lesson.title_bn : lesson.title_en;
+}
+
 function resolvePayableAmount(input: {
   is_free: boolean;
   price: number;
@@ -17,10 +33,7 @@ function resolvePayableAmount(input: {
     return 0;
   }
 
-  if (
-    input.discount_price > 0 &&
-    input.discount_price < input.price
-  ) {
+  if (input.discount_price > 0 && input.discount_price < input.price) {
     return input.discount_price;
   }
 
@@ -51,7 +64,7 @@ async function syncEnrolledCourseCount(studentId: string): Promise<void> {
   });
 }
 
-async function buildStudentCourses(studentId: string) {
+async function buildStudentCourses(studentId: string, lang: Language) {
   const enrollments = await EnrollmentModel.find({ student_id: studentId }).sort({
     updatedAt: -1,
   });
@@ -80,9 +93,7 @@ async function buildStudentCourses(studentId: string) {
     ]),
   ]);
 
-  const courseById = new Map(
-    courses.map((course) => [String(course.id), course]),
-  );
+  const courseById = new Map(courses.map((course) => [String(course.id), course]));
   const lessonsCountByCourseId = new Map(
     lessonCounts.map((item) => [String(item._id), item.total_lessons]),
   );
@@ -104,7 +115,7 @@ async function buildStudentCourses(studentId: string) {
         enrollment_id: enrollment.id,
         course_id: String(course.id),
         slug: course.slug,
-        title: course.title_en,
+        title: resolveLocalizedCourseTitle(course, lang),
         thumbnail: course.thumbnail,
         duration: course.duration,
         total_lessons: totalLessons,
@@ -157,14 +168,14 @@ export const studentService = {
     };
   },
 
-  async getCourses(userId: string) {
+  async getCourses(userId: string, lang: Language) {
     await ensureStudent(userId);
-    return buildStudentCourses(userId);
+    return buildStudentCourses(userId, lang);
   },
 
-  async getDashboard(userId: string) {
+  async getDashboard(userId: string, lang: Language) {
     const student = await ensureStudent(userId);
-    const courses = await buildStudentCourses(userId);
+    const courses = await buildStudentCourses(userId, lang);
 
     const totalLessonsCompleted = courses.reduce(
       (sum, item) => sum + item.completed_lessons_count,
@@ -208,7 +219,7 @@ export const studentService = {
           course_id: course.course_id,
           course_title: course.title,
           lesson_id: nextLesson.id,
-          lesson_title: nextLesson.title_en,
+          lesson_title: resolveLocalizedLessonTitle(nextLesson, lang),
           order_no: nextLesson.order_no,
         };
       }),

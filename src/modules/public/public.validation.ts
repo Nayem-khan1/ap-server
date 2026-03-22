@@ -42,7 +42,9 @@ const listEventsQuerySchema = paginationQuerySchema.extend({
 
 const listInstructorsQuerySchema = paginationQuerySchema;
 
-const listTestimonialsQuerySchema = paginationQuerySchema;
+const listTestimonialsQuerySchema = paginationQuerySchema.extend({
+  lang: languageSchema,
+});
 
 const slugParamSchema = z.object({
   slug: z.string().trim().min(1),

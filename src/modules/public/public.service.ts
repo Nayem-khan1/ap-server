@@ -401,3 +401,4 @@ export const publicService = {
     return certificateService.verifyByCertificateNo(certificateNo);
   },
 };
+

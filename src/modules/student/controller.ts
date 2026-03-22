@@ -13,6 +13,10 @@ function resolveStudentId(req: Request): string {
   return studentId;
 }
 
+function resolveLocale(req: Request): "en" | "bn" {
+  return req.query.lang === "bn" ? "bn" : "en";
+}
+
 export const studentController = {
   getProfile: catchAsync(async (req: Request, res: Response) => {
     const studentId = resolveStudentId(req);
@@ -40,7 +44,7 @@ export const studentController = {
 
   getDashboard: catchAsync(async (req: Request, res: Response) => {
     const studentId = resolveStudentId(req);
-    const data = await studentService.getDashboard(studentId);
+    const data = await studentService.getDashboard(studentId, resolveLocale(req));
     return sendResponse({
       res,
       statusCode: StatusCodes.OK,
@@ -52,7 +56,7 @@ export const studentController = {
 
   getCourses: catchAsync(async (req: Request, res: Response) => {
     const studentId = resolveStudentId(req);
-    const data = await studentService.getCourses(studentId);
+    const data = await studentService.getCourses(studentId, resolveLocale(req));
     return sendResponse({
       res,
       statusCode: StatusCodes.OK,

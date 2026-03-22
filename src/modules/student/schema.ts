@@ -13,9 +13,14 @@ const updateProfileSchema = z
     message: "At least one profile field is required",
   });
 
+const localeQuerySchema = z.object({
+  lang: z.enum(["en", "bn"]).default("en"),
+});
+
 export const studentValidation = {
   courseIdParam: { params: courseIdParamSchema },
   updateProfile: { body: updateProfileSchema },
+  localeQuery: { query: localeQuerySchema },
 };
 
 export type UpdateStudentProfileInput = z.infer<typeof updateProfileSchema>;
