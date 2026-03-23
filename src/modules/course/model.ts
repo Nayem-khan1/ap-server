@@ -1,8 +1,9 @@
-import mongoose, { Model, Schema, model } from "mongoose";
+﻿import mongoose, { Model, Schema, model } from "mongoose";
 import { applyDefaultJsonTransform } from "../../utils/mongoose-transform";
 
 type CoursePublishStatus = "draft" | "published";
 type CourseLevel = "beginner" | "intermediate" | "advanced" | "all_levels";
+type CourseHighlightAnimation = "none" | "pulse" | "blink";
 
 export interface ICourseFaq {
   question_en: string;
@@ -33,6 +34,8 @@ export interface ICourse {
   level: CourseLevel;
   language: string;
   grade: string;
+  is_popular: boolean;
+  highlight_animation: CourseHighlightAnimation;
   duration: string;
   total_lessons: number;
   is_free: boolean;
@@ -108,6 +111,12 @@ const courseSchema = new Schema<ICourse>(
     },
     language: { type: String, default: "bn" },
     grade: { type: String, default: "" },
+    is_popular: { type: Boolean, default: false, index: true },
+    highlight_animation: {
+      type: String,
+      enum: ["none", "pulse", "blink"],
+      default: "none",
+    },
     duration: { type: String, default: "" },
     total_lessons: { type: Number, default: 0, min: 0 },
     is_free: { type: Boolean, required: true },
@@ -123,6 +132,7 @@ const courseSchema = new Schema<ICourse>(
 );
 
 courseSchema.index({ publish_status: 1, createdAt: -1 });
+courseSchema.index({ publish_status: 1, is_popular: -1, updatedAt: -1 });
 
 const categorySchema = new Schema<ICourseCategory>(
   {
@@ -177,3 +187,7 @@ export const CourseCategoryModel =
 export const CourseModuleModel =
   (mongoose.models.CourseModule as ModuleModel | undefined) ||
   model<ICourseModule>("CourseModule", moduleSchema);
+
+
+
+

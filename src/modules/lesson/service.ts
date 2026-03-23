@@ -1,4 +1,4 @@
-import { StatusCodes } from "http-status-codes";
+﻿import { StatusCodes } from "http-status-codes";
 import { AppError } from "../../errors/app-error";
 import { CourseModel, CourseModuleModel } from "../course/model";
 import { LessonContentModel, LessonModel } from "./model";
@@ -138,10 +138,10 @@ export const lessonService = {
       }).sort({ order_no: 1 });
       if (firstVideo) {
         if (typeof payload.youtube_unlisted_url === "string") {
-          firstVideo.video_url = payload.youtube_unlisted_url;
+          (firstVideo as typeof firstVideo & { video_url?: string }).video_url = payload.youtube_unlisted_url;
         }
         if (typeof payload.duration === "string") {
-          firstVideo.video_duration = payload.duration;
+          (firstVideo as typeof firstVideo & { video_duration?: string }).video_duration = payload.duration;
         }
         await firstVideo.save();
       }
@@ -419,3 +419,5 @@ export const lessonService = {
     return true;
   },
 };
+
+

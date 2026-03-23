@@ -1,4 +1,4 @@
-import { z } from "zod";
+﻿import { z } from "zod";
 
 export const courseStatusSchema = z.enum(["draft", "published"]);
 export const courseLevelSchema = z.enum([
@@ -7,6 +7,7 @@ export const courseLevelSchema = z.enum([
   "advanced",
   "all_levels",
 ]);
+export const courseHighlightAnimationSchema = z.enum(["none", "pulse", "blink"]);
 
 const youtubeUrlRegex =
   /^(https?:\/\/)?(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/)[A-Za-z0-9_-]{6,}.*$/;
@@ -55,6 +56,8 @@ const courseFormBaseSchema = z.object({
     level: courseLevelSchema.default("beginner"),
     language: z.string().min(1).default("bn"),
     grade: z.string().optional(),
+    is_popular: z.boolean().default(false),
+    highlight_animation: courseHighlightAnimationSchema.default("none"),
     is_free: z.boolean(),
     price: z.coerce.number().min(0),
     discount_price: z.coerce.number().min(0),
@@ -144,3 +147,5 @@ export const courseValidation = {
 export type CourseInput = z.infer<typeof courseFormSchema>;
 export type CourseCategoryInput = z.infer<typeof courseCategoryFormSchema>;
 export type ModuleInput = z.infer<typeof moduleFormSchema>;
+
+

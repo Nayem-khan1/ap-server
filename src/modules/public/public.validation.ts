@@ -1,6 +1,27 @@
-import { z } from "zod";
+﻿import { z } from "zod";
 
 const languageSchema = z.enum(["bn", "en"]).default("en");
+const booleanQuerySchema = z.preprocess((value) => {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (typeof value === "number") {
+    return value === 1;
+  }
+
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true" || normalized === "1") {
+      return true;
+    }
+    if (normalized === "false" || normalized === "0") {
+      return false;
+    }
+  }
+
+  return value;
+}, z.boolean().optional());
 
 const paginationQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -13,6 +34,7 @@ const listCoursesQuerySchema = paginationQuerySchema
     price_type: z.enum(["free", "paid"]).optional(),
     min_price: z.coerce.number().min(0).optional(),
     max_price: z.coerce.number().min(0).optional(),
+    popular_only: booleanQuerySchema,
     lang: languageSchema,
   })
   .refine(
@@ -96,3 +118,5 @@ export type ListBlogsQuery = z.infer<typeof listBlogsQuerySchema>;
 export type ListEventsQuery = z.infer<typeof listEventsQuerySchema>;
 export type ListInstructorsQuery = z.infer<typeof listInstructorsQuerySchema>;
 export type ListTestimonialsQuery = z.infer<typeof listTestimonialsQuerySchema>;
+
+

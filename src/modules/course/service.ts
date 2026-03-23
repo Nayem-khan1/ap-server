@@ -1,4 +1,4 @@
-import { StatusCodes } from "http-status-codes";
+﻿import { StatusCodes } from "http-status-codes";
 import { AppError } from "../../errors/app-error";
 import { CourseCategoryModel, CourseModel, CourseModuleModel } from "./model";
 import { CourseCategoryInput, CourseInput, ModuleInput } from "./schema";
@@ -22,17 +22,45 @@ function normalizeStringList(
 }
 
 function normalizeCoursePayload(payload: Partial<CourseInput>): Record<string, unknown> {
-  return {
-    ...payload,
-    requirements_en: normalizeStringList(payload.requirements_en),
-    requirements_bn: normalizeStringList(payload.requirements_bn),
-    learning_objectives_en: normalizeStringList(payload.learning_objectives_en),
-    learning_objectives_bn: normalizeStringList(payload.learning_objectives_bn),
-    targeted_audience_en: normalizeStringList(payload.targeted_audience_en),
-    targeted_audience_bn: normalizeStringList(payload.targeted_audience_bn),
-    faqs: Array.isArray(payload.faqs) ? payload.faqs : [],
-    thumbnail: typeof payload.thumbnail === "string" ? payload.thumbnail : "",
-  };
+  const normalized: Record<string, unknown> = { ...payload };
+
+  if ("requirements_en" in payload) {
+    normalized.requirements_en = normalizeStringList(payload.requirements_en);
+  }
+
+  if ("requirements_bn" in payload) {
+    normalized.requirements_bn = normalizeStringList(payload.requirements_bn);
+  }
+
+  if ("learning_objectives_en" in payload) {
+    normalized.learning_objectives_en = normalizeStringList(
+      payload.learning_objectives_en,
+    );
+  }
+
+  if ("learning_objectives_bn" in payload) {
+    normalized.learning_objectives_bn = normalizeStringList(
+      payload.learning_objectives_bn,
+    );
+  }
+
+  if ("targeted_audience_en" in payload) {
+    normalized.targeted_audience_en = normalizeStringList(payload.targeted_audience_en);
+  }
+
+  if ("targeted_audience_bn" in payload) {
+    normalized.targeted_audience_bn = normalizeStringList(payload.targeted_audience_bn);
+  }
+
+  if ("faqs" in payload) {
+    normalized.faqs = Array.isArray(payload.faqs) ? payload.faqs : [];
+  }
+
+  if ("thumbnail" in payload) {
+    normalized.thumbnail = typeof payload.thumbnail === "string" ? payload.thumbnail : "";
+  }
+
+  return normalized;
 }
 
 function toSlug(text: string): string {
@@ -224,3 +252,4 @@ export const courseService = {
     return true;
   },
 };
+

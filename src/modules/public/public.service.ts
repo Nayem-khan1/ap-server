@@ -1,4 +1,4 @@
-import { StatusCodes } from "http-status-codes";
+﻿import { StatusCodes } from "http-status-codes";
 import { AppError } from "../../errors/app-error";
 import {
   getPaginationMeta,
@@ -95,6 +95,10 @@ export const publicService = {
       filter.is_free = false;
     }
 
+    if (query.popular_only) {
+      filter.is_popular = true;
+    }
+
     if (
       typeof query.min_price !== "undefined" ||
       typeof query.max_price !== "undefined"
@@ -113,7 +117,10 @@ export const publicService = {
     }
 
     const [courses, total] = await Promise.all([
-      CourseModel.find(filter).sort({ createdAt: -1 }).skip(skip).limit(page_size),
+      CourseModel.find(filter)
+        .sort({ is_popular: -1, updatedAt: -1 })
+        .skip(skip)
+        .limit(page_size),
       CourseModel.countDocuments(filter),
     ]);
 
@@ -401,4 +408,6 @@ export const publicService = {
     return certificateService.verifyByCertificateNo(certificateNo);
   },
 };
+
+
 
