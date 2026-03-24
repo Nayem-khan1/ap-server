@@ -1,7 +1,7 @@
 import { StatusCodes } from "http-status-codes";
 import { AppError } from "../../errors/app-error";
 import { IssuedCertificateModel } from "../certificate/model";
-import { CourseModel } from "../course/model";
+import { CourseModel, CourseModuleModel } from "../course/model";
 import { EnrollmentModel, ProgressModel } from "../enrollment/model";
 import { LessonModel } from "../lesson/model";
 import { paymentService } from "../payment/service";
@@ -22,6 +22,20 @@ function resolveLocalizedLessonTitle(
   lang: Language,
 ): string {
   return lang === "bn" ? lesson.title_bn : lesson.title_en;
+}
+
+function resolveLocalizedModuleTitle(
+  module: { title_en: string; title_bn: string },
+  lang: Language,
+): string {
+  return lang === "bn" ? module.title_bn : module.title_en;
+}
+
+function resolveLocalizedCourseSubtitle(
+  course: { subtitle_en: string; subtitle_bn: string },
+  lang: Language,
+): string {
+  return lang === "bn" ? course.subtitle_bn : course.subtitle_en;
 }
 
 function resolvePayableAmount(input: {
@@ -171,6 +185,174 @@ export const studentService = {
   async getCourses(userId: string, lang: Language) {
     await ensureStudent(userId);
     return buildStudentCourses(userId, lang);
+  },
+
+  async getCourseRoadmap(userId: string, courseId: string, lang: Language) {
+    await ensureStudent(userId);
+
+    const [enrollment, course, modules, lessons] = await Promise.all([
+      EnrollmentModel.findOne({
+        student_id: userId,
+        course_id: courseId,
+      }),
+      CourseModel.findOne({ _id: courseId, publish_status: "published" }),
+      CourseModuleModel.find({
+        course_id: courseId,
+        publish_status: "published",
+      }).sort({ order_no: 1 }),
+      LessonModel.find({
+        course_id: courseId,
+        publish_status: "published",
+      }).sort({ order_no: 1 }),
+    ]);
+
+    if (!enrollment) {
+      throw new AppError(StatusCodes.NOT_FOUND, "Enrollment not found");
+    }
+
+    if (!course) {
+      throw new AppError(StatusCodes.NOT_FOUND, "Published course not found");
+    }
+
+    const publishedModuleIds = new Set(modules.map((module) => String(module.id)));
+    const moduleOrderById = new Map(
+      modules.map((module) => [String(module.id), module.order_no]),
+    );
+    const orderedLessons = lessons
+      .filter((lesson) => publishedModuleIds.has(String(lesson.module_id)))
+      .slice()
+      .sort((a, b) => {
+        const leftModuleOrder =
+          moduleOrderById.get(String(a.module_id)) ?? Number.MAX_SAFE_INTEGER;
+        const rightModuleOrder =
+          moduleOrderById.get(String(b.module_id)) ?? Number.MAX_SAFE_INTEGER;
+
+        if (leftModuleOrder !== rightModuleOrder) {
+          return leftModuleOrder - rightModuleOrder;
+        }
+
+        return a.order_no - b.order_no;
+      });
+
+    const completedSet = new Set(enrollment.completed_lessons);
+    const completedLessonsCount = orderedLessons.filter((lesson) =>
+      completedSet.has(lesson.id),
+    ).length;
+    const nextLesson =
+      enrollment.access_status === "locked"
+        ? null
+        : orderedLessons.find((lesson) => !completedSet.has(lesson.id)) ?? null;
+    const nextLessonId = nextLesson?.id ?? null;
+    const lessonIndexById = new Map(
+      orderedLessons.map((lesson, index) => [String(lesson.id), index]),
+    );
+    const nextLessonIndex =
+      nextLessonId === null
+        ? -1
+        : lessonIndexById.get(String(nextLessonId)) ?? -1;
+    const lessonsByModuleId = new Map<string, typeof orderedLessons>();
+    const moduleById = new Map(modules.map((module) => [String(module.id), module]));
+
+    for (const lesson of orderedLessons) {
+      const moduleId = String(lesson.module_id);
+      const existing = lessonsByModuleId.get(moduleId) ?? [];
+      existing.push(lesson);
+      lessonsByModuleId.set(moduleId, existing);
+    }
+
+    const roadmapModules = modules.map((module) => {
+      const moduleLessons = lessonsByModuleId.get(String(module.id)) ?? [];
+      const completedModuleLessonsCount = moduleLessons.filter((lesson) =>
+        completedSet.has(lesson.id),
+      ).length;
+      const progressPercent = moduleLessons.length
+        ? Math.round((completedModuleLessonsCount / moduleLessons.length) * 100)
+        : 0;
+
+      const status =
+        moduleLessons.length > 0 && completedModuleLessonsCount === moduleLessons.length
+          ? "completed"
+          : enrollment.access_status === "locked"
+            ? "locked"
+            : moduleLessons.some((lesson) => lesson.id === nextLessonId) ||
+                completedModuleLessonsCount > 0
+              ? "current"
+              : "upcoming";
+
+      return {
+        id: module.id,
+        title: resolveLocalizedModuleTitle(module, lang),
+        order_no: module.order_no,
+        total_lessons: moduleLessons.length,
+        completed_lessons_count: completedModuleLessonsCount,
+        progress_percent: progressPercent,
+        status,
+        lessons: moduleLessons.map((lesson) => {
+          const isCompleted = completedSet.has(lesson.id);
+          const isCurrent = nextLessonId === lesson.id;
+          const lessonIndex =
+            lessonIndexById.get(String(lesson.id)) ?? Number.MAX_SAFE_INTEGER;
+
+          return {
+            id: lesson.id,
+            title: resolveLocalizedLessonTitle(lesson, lang),
+            order_no: lesson.order_no,
+            module_id: lesson.module_id,
+            status: isCompleted
+              ? "completed"
+              : enrollment.access_status === "locked"
+                ? "locked"
+                : isCurrent
+                  ? "current"
+                  : lessonIndex > nextLessonIndex
+                    ? "upcoming"
+                    : "available",
+          };
+        }),
+      };
+    });
+
+    return {
+      course: {
+        enrollment_id: enrollment.id,
+        course_id: String(course.id),
+        slug: course.slug,
+        title: resolveLocalizedCourseTitle(course, lang),
+        subtitle: resolveLocalizedCourseSubtitle(course, lang),
+        thumbnail: course.thumbnail,
+        duration: course.duration,
+        total_lessons: orderedLessons.length,
+        completed_lessons_count: completedLessonsCount,
+        remaining_lessons: Math.max(0, orderedLessons.length - completedLessonsCount),
+        progress_percent: enrollment.progress_percent,
+        status: enrollment.status,
+        access_status: enrollment.access_status,
+        last_activity_at: enrollment.updatedAt.toISOString(),
+      },
+      summary: {
+        total_modules: roadmapModules.length,
+        completed_modules: roadmapModules.filter((module) => module.status === "completed")
+          .length,
+        total_lessons: orderedLessons.length,
+        completed_lessons: completedLessonsCount,
+        next_lesson: nextLesson
+          ? {
+              id: nextLesson.id,
+              title: resolveLocalizedLessonTitle(nextLesson, lang),
+              order_no: nextLesson.order_no,
+              module_id: nextLesson.module_id,
+              module_title: resolveLocalizedModuleTitle(
+                moduleById.get(String(nextLesson.module_id)) ?? {
+                  title_en: "",
+                  title_bn: "",
+                },
+                lang,
+              ),
+            }
+          : null,
+      },
+      modules: roadmapModules,
+    };
   },
 
   async getDashboard(userId: string, lang: Language) {

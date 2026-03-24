@@ -19,8 +19,13 @@ const localeQuerySchema = z.object({
 
 export const studentValidation = {
   courseIdParam: { params: courseIdParamSchema },
+  courseRoadmap: {
+    params: courseIdParamSchema,
+    query: localeQuerySchema,
+  },
   updateProfile: { body: updateProfileSchema },
   localeQuery: { query: localeQuerySchema },
 };
 
 export type UpdateStudentProfileInput = z.infer<typeof updateProfileSchema>;
+

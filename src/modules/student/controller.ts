@@ -66,6 +66,22 @@ export const studentController = {
     });
   }),
 
+  getCourseRoadmap: catchAsync(async (req: Request, res: Response) => {
+    const studentId = resolveStudentId(req);
+    const data = await studentService.getCourseRoadmap(
+      studentId,
+      req.params.courseId,
+      resolveLocale(req),
+    );
+    return sendResponse({
+      res,
+      statusCode: StatusCodes.OK,
+      success: true,
+      message: "Student course roadmap fetched successfully",
+      data,
+    });
+  }),
+
   enrollInCourse: catchAsync(async (req: Request, res: Response) => {
     const studentId = resolveStudentId(req);
     const data = await studentService.enrollInCourse(studentId, req.params.courseId);

@@ -26,6 +26,12 @@ studentRouter.get(
   validateRequest(studentValidation.localeQuery),
   studentController.getCourses,
 );
+studentRouter.get(
+  "/courses/:courseId/roadmap",
+  validateObjectId("courseId"),
+  validateRequest(studentValidation.courseRoadmap),
+  studentController.getCourseRoadmap,
+);
 
 studentRouter.post(
   "/courses/:courseId/enroll",
@@ -42,3 +48,4 @@ studentRouter.post(
 );
 
 export { studentRouter };
+
