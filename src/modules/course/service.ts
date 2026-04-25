@@ -153,6 +153,11 @@ export const courseService = {
           "At least one lesson is required before publishing the course",
         );
       }
+
+      await CourseModuleModel.updateMany(
+        { course_id: id },
+        { publish_status: "published" },
+      );
     }
 
     const course = await CourseModel.findByIdAndUpdate(
@@ -234,6 +239,7 @@ export const courseService = {
       title_en: payload.title_en,
       title_bn: payload.title_bn,
       order_no: count + 1,
+      publish_status: "published",
     });
     return item.toJSON();
   },
@@ -252,4 +258,3 @@ export const courseService = {
     return true;
   },
 };
-

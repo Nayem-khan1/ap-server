@@ -90,6 +90,7 @@ export const lessonService = {
         title_en: moduleTitleEn,
         title_bn: moduleTitleBn,
         order_no: count + 1,
+        publish_status: "published",
       });
     }
 
@@ -419,5 +420,4 @@ export const lessonService = {
     return true;
   },
 };
-
 

@@ -78,6 +78,19 @@ async function syncEnrolledCourseCount(studentId: string): Promise<void> {
   });
 }
 
+async function listVisibleCourseModules(courseId: string) {
+  const publishedModules = await CourseModuleModel.find({
+    course_id: courseId,
+    publish_status: "published",
+  }).sort({ order_no: 1 });
+
+  if (publishedModules.length > 0) {
+    return publishedModules;
+  }
+
+  return CourseModuleModel.find({ course_id: courseId }).sort({ order_no: 1 });
+}
+
 async function buildStudentCourses(studentId: string, lang: Language) {
   const enrollments = await EnrollmentModel.find({ student_id: studentId }).sort({
     updatedAt: -1,
@@ -196,10 +209,7 @@ export const studentService = {
         course_id: courseId,
       }),
       CourseModel.findOne({ _id: courseId, publish_status: "published" }),
-      CourseModuleModel.find({
-        course_id: courseId,
-        publish_status: "published",
-      }).sort({ order_no: 1 }),
+      listVisibleCourseModules(courseId),
       LessonModel.find({
         course_id: courseId,
         publish_status: "published",

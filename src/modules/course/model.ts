@@ -160,7 +160,7 @@ const moduleSchema = new Schema<ICourseModule>(
     publish_status: {
       type: String,
       enum: ["draft", "published"],
-      default: "draft",
+      default: "published",
     },
   },
   { timestamps: true },
@@ -187,7 +187,6 @@ export const CourseCategoryModel =
 export const CourseModuleModel =
   (mongoose.models.CourseModule as ModuleModel | undefined) ||
   model<ICourseModule>("CourseModule", moduleSchema);
-
 
 
 

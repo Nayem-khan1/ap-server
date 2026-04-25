@@ -5,9 +5,10 @@ import {
   getPaginationOptions,
   PaginationMeta,
 } from "../../utils/pagination";
-import { CourseCategoryModel, CourseModel } from "../course/model";
+import { CourseCategoryModel, CourseModel, CourseModuleModel } from "../course/model";
 import { BlogModel } from "../blog/model";
 import { EventModel } from "../event/model";
+import { LessonContentModel, LessonModel } from "../lesson/model";
 import { UserModel } from "../user/model";
 import { IssuedCertificateModel } from "../certificate/model";
 import { certificateService } from "../certificate/service";
@@ -43,6 +44,57 @@ function localizeCourse(course: Record<string, unknown>, lang: Language) {
       ? course.targeted_audience_bn
       : course.targeted_audience_en,
   };
+}
+
+function localizeCourseModule(
+  module: Record<string, unknown>,
+  lang: Language,
+): Record<string, unknown> {
+  return {
+    id: String(module.id ?? ""),
+    title: lang === "bn" ? module.title_bn : module.title_en,
+    title_en: module.title_en,
+    title_bn: module.title_bn,
+    order_no: module.order_no,
+  };
+}
+
+function localizeCourseLesson(
+  lesson: Record<string, unknown>,
+  lang: Language,
+  isPreview: boolean,
+): Record<string, unknown> {
+  return {
+    id: String(lesson.id ?? ""),
+    title: lang === "bn" ? lesson.title_bn : lesson.title_en,
+    title_en: lesson.title_en,
+    title_bn: lesson.title_bn,
+    order_no: lesson.order_no,
+    is_preview: isPreview,
+  };
+}
+
+function mapInstructorProfile(user: Record<string, unknown>): Record<string, unknown> {
+  return {
+    id: String(user.id ?? ""),
+    name: String(user.name ?? ""),
+    bio: String(user.bio ?? ""),
+    avatar: String(user.avatar ?? ""),
+    specialization: String(user.specialization ?? ""),
+  };
+}
+
+async function listVisibleCourseModules(courseId: string) {
+  const publishedModules = await CourseModuleModel.find({
+    course_id: courseId,
+    publish_status: "published",
+  }).sort({ order_no: 1 });
+
+  if (publishedModules.length > 0) {
+    return publishedModules;
+  }
+
+  return CourseModuleModel.find({ course_id: courseId }).sort({ order_no: 1 });
 }
 
 function localizeCourseCategory(
@@ -226,13 +278,101 @@ export const publicService = {
     }
 
     const courseJson = course.toJSON() as Record<string, unknown>;
-    const category = await CourseCategoryModel.findOne({
-      _id: String(courseJson.category_id ?? ""),
-      publish_status: "published",
-    });
+    const courseId = String(courseJson.id ?? "");
+    const instructorIds = Array.isArray(courseJson.instructor_ids)
+      ? Array.from(
+          new Set(
+            courseJson.instructor_ids
+              .map((item) => String(item || "").trim())
+              .filter(Boolean),
+          ),
+        )
+      : [];
+    const [category, modules, lessons, instructors] = await Promise.all([
+      CourseCategoryModel.findOne({
+        _id: String(courseJson.category_id ?? ""),
+        publish_status: "published",
+      }),
+      listVisibleCourseModules(courseId),
+      LessonModel.find({
+        course_id: courseId,
+        publish_status: "published",
+      }).sort({ order_no: 1 }),
+      instructorIds.length
+        ? UserModel.find({
+            _id: { $in: instructorIds },
+            role: "instructor",
+            status: "active",
+            publish_status: "published",
+          }).select("name bio avatar specialization publish_status")
+        : Promise.resolve([]),
+    ]);
+    const lessonIds = lessons.map((lesson) => String(lesson.id));
+    const previewContents = lessonIds.length
+      ? await LessonContentModel.find({
+          lesson_id: { $in: lessonIds },
+          is_preview: true,
+        }).select("lesson_id")
+      : [];
     const categoryJson = category
       ? (category.toJSON() as Record<string, unknown>)
       : null;
+    const previewLessonIds = new Set(
+      previewContents.map((item) => String(item.lesson_id ?? "")),
+    );
+    const moduleOrder = new Map(
+      modules.map((module) => [String(module.id), module.order_no]),
+    );
+    const visibleModuleIds = new Set(modules.map((module) => String(module.id)));
+    const orderedLessons = lessons
+      .filter((lesson) => visibleModuleIds.has(String(lesson.module_id)))
+      .slice()
+      .sort((left, right) => {
+        const leftOrder =
+          moduleOrder.get(String(left.module_id)) ?? Number.MAX_SAFE_INTEGER;
+        const rightOrder =
+          moduleOrder.get(String(right.module_id)) ?? Number.MAX_SAFE_INTEGER;
+
+        if (leftOrder !== rightOrder) {
+          return leftOrder - rightOrder;
+        }
+
+        return left.order_no - right.order_no;
+      });
+    const lessonsByModuleId = new Map<string, typeof orderedLessons>();
+
+    for (const lesson of orderedLessons) {
+      const moduleId = String(lesson.module_id);
+      const existing = lessonsByModuleId.get(moduleId) ?? [];
+      existing.push(lesson);
+      lessonsByModuleId.set(moduleId, existing);
+    }
+
+    const instructorById = new Map(
+      instructors.map((item) => [String(item.id), mapInstructorProfile(item.toJSON())]),
+    );
+    const orderedInstructors = instructorIds
+      .map((id) => instructorById.get(id))
+      .filter(Boolean);
+    const curriculum = modules.map((module) => {
+      const moduleJson = localizeCourseModule(
+        module.toJSON() as Record<string, unknown>,
+        lang,
+      );
+      const moduleLessons = lessonsByModuleId.get(String(module.id)) ?? [];
+
+      return {
+        ...moduleJson,
+        total_lessons: moduleLessons.length,
+        lessons: moduleLessons.map((lesson) =>
+          localizeCourseLesson(
+            lesson.toJSON() as Record<string, unknown>,
+            lang,
+            previewLessonIds.has(String(lesson.id)),
+          ),
+        ),
+      };
+    });
 
     return {
       ...localizeCourse(courseJson, lang),
@@ -240,6 +380,11 @@ export const publicService = {
         ? String((lang === "bn" ? categoryJson.title_bn : categoryJson.title_en) ?? "")
         : String(courseJson.category_id ?? ""),
       category_slug: categoryJson ? String(categoryJson.slug ?? "") : "",
+      total_lessons:
+        curriculum.reduce((sum, module) => sum + Number(module.total_lessons ?? 0), 0) ||
+        Number(courseJson.total_lessons ?? 0),
+      instructors: orderedInstructors,
+      curriculum,
     };
   },
 
@@ -408,6 +553,5 @@ export const publicService = {
     return certificateService.verifyByCertificateNo(certificateNo);
   },
 };
-
 
 
