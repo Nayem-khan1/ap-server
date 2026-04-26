@@ -17,6 +17,7 @@ import {
   VerifyOtpBody,
 } from "./auth.validation";
 import { UserModel } from "../user/model";
+import { StudentActivityModel } from "../student/model";
 
 interface LoginResponse {
   access_token: string;
@@ -199,6 +200,12 @@ export const authService = {
 
     const { access_token, refresh_token } = await issueTokensForUser(user);
 
+    await StudentActivityModel.create({
+      student_id: resolveUserId(user),
+      type: "login",
+      occurred_at: new Date().toISOString(),
+    });
+
     return {
       access_token,
       refresh_token,
@@ -233,6 +240,12 @@ export const authService = {
     }
 
     const { access_token, refresh_token } = await issueTokensForUser(user);
+
+    await StudentActivityModel.create({
+      student_id: resolveUserId(user),
+      type: "login",
+      occurred_at: new Date().toISOString(),
+    });
 
     return {
       access_token,

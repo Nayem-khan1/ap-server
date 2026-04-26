@@ -82,6 +82,56 @@ export const studentController = {
     });
   }),
 
+  updateLessonVideoProgress: catchAsync(async (req: Request, res: Response) => {
+    const studentId = resolveStudentId(req);
+    const data = await studentService.updateLessonVideoProgress(
+      studentId,
+      req.params.courseId,
+      req.params.lessonId,
+      req.body,
+    );
+    return sendResponse({
+      res,
+      statusCode: StatusCodes.OK,
+      success: true,
+      message: "Lesson video progress updated successfully",
+      data,
+    });
+  }),
+
+  submitLessonQuiz: catchAsync(async (req: Request, res: Response) => {
+    const studentId = resolveStudentId(req);
+    const data = await studentService.submitLessonQuiz(
+      studentId,
+      req.params.courseId,
+      req.params.lessonId,
+      req.body,
+    );
+    return sendResponse({
+      res,
+      statusCode: StatusCodes.OK,
+      success: true,
+      message: "Lesson quiz submitted successfully",
+      data,
+    });
+  }),
+
+  completeLessonNote: catchAsync(async (req: Request, res: Response) => {
+    const studentId = resolveStudentId(req);
+    const data = await studentService.completeLessonNote(
+      studentId,
+      req.params.courseId,
+      req.params.lessonId,
+    );
+    return sendResponse({
+      res,
+      statusCode: StatusCodes.OK,
+      success: true,
+      message: "Lesson note completion updated successfully",
+      data,
+    });
+  }),
+
   enrollInCourse: catchAsync(async (req: Request, res: Response) => {
     const studentId = resolveStudentId(req);
     const data = await studentService.enrollInCourse(studentId, req.params.courseId);
@@ -90,6 +140,45 @@ export const studentController = {
       statusCode: StatusCodes.OK,
       success: true,
       message: "Course enrollment processed successfully",
+      data,
+    });
+  }),
+
+  getCertificates: catchAsync(async (req: Request, res: Response) => {
+    const studentId = resolveStudentId(req);
+    const data = await studentService.getCertificates(studentId, resolveLocale(req));
+    return sendResponse({
+      res,
+      statusCode: StatusCodes.OK,
+      success: true,
+      message: "Student certificates fetched successfully",
+      data,
+    });
+  }),
+
+  downloadCertificate: catchAsync(async (req: Request, res: Response) => {
+    const studentId = resolveStudentId(req);
+    const data = await studentService.downloadCertificate(
+      studentId,
+      req.params.certificateId,
+    );
+    return sendResponse({
+      res,
+      statusCode: StatusCodes.OK,
+      success: true,
+      message: "Student certificate PDF generated successfully",
+      data,
+    });
+  }),
+
+  getOrders: catchAsync(async (req: Request, res: Response) => {
+    const studentId = resolveStudentId(req);
+    const data = await studentService.getOrders(studentId);
+    return sendResponse({
+      res,
+      statusCode: StatusCodes.OK,
+      success: true,
+      message: "Student orders fetched successfully",
       data,
     });
   }),

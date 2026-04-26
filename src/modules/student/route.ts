@@ -32,6 +32,27 @@ studentRouter.get(
   validateRequest(studentValidation.courseRoadmap),
   studentController.getCourseRoadmap,
 );
+studentRouter.patch(
+  "/courses/:courseId/lessons/:lessonId/video-progress",
+  validateObjectId("courseId"),
+  validateObjectId("lessonId"),
+  validateRequest(studentValidation.lessonVideoProgress),
+  studentController.updateLessonVideoProgress,
+);
+studentRouter.post(
+  "/courses/:courseId/lessons/:lessonId/submit-quiz",
+  validateObjectId("courseId"),
+  validateObjectId("lessonId"),
+  validateRequest(studentValidation.lessonQuizSubmission),
+  studentController.submitLessonQuiz,
+);
+studentRouter.post(
+  "/courses/:courseId/lessons/:lessonId/complete-note",
+  validateObjectId("courseId"),
+  validateObjectId("lessonId"),
+  validateRequest(studentValidation.lessonNoteCompletion),
+  studentController.completeLessonNote,
+);
 
 studentRouter.post(
   "/courses/:courseId/enroll",
@@ -39,6 +60,19 @@ studentRouter.post(
   validateRequest(studentValidation.courseIdParam),
   studentController.enrollInCourse,
 );
+
+studentRouter.get(
+  "/certificates",
+  validateRequest(studentValidation.localeQuery),
+  studentController.getCertificates,
+);
+studentRouter.get(
+  "/certificates/:certificateId/download",
+  validateObjectId("certificateId"),
+  validateRequest(studentValidation.certificateIdParam),
+  studentController.downloadCertificate,
+);
+studentRouter.get("/orders", studentController.getOrders);
 
 studentRouter.post(
   "/courses/:courseId/complete-next-lesson",
@@ -48,4 +82,3 @@ studentRouter.post(
 );
 
 export { studentRouter };
-

@@ -134,7 +134,10 @@ export const certificateService = {
     template_id: string;
     linked_course_id: string;
     student_name: string;
+    student_id?: string;
     generated_by: string;
+    verification_status?: "verified" | "unverified";
+    issued_at?: string;
   }) {
     const [course, template] = await Promise.all([
       CourseModel.findById(payload.linked_course_id),
@@ -157,8 +160,10 @@ export const certificateService = {
     }
 
     const enrollment = await EnrollmentModel.findOne({
-      student_name: payload.student_name,
       course_id: payload.linked_course_id,
+      ...(payload.student_id
+        ? { student_id: payload.student_id }
+        : { student_name: payload.student_name }),
     });
 
     if (!enrollment) {
@@ -188,21 +193,31 @@ export const certificateService = {
     }
 
     const existing = await IssuedCertificateModel.findOne({
-      student_name: payload.student_name,
       linked_course_id: payload.linked_course_id,
+      ...(payload.student_id
+        ? { student_id: payload.student_id }
+        : { student_name: payload.student_name }),
     });
     if (existing) {
+      if (
+        payload.verification_status === "verified" &&
+        existing.verification_status !== "verified"
+      ) {
+        existing.verification_status = "verified";
+        await existing.save();
+      }
       return existing.toJSON();
     }
 
     const item = await IssuedCertificateModel.create({
       certificate_no: await generateCertificateNumber(),
+      student_id: payload.student_id,
       student_name: payload.student_name,
       linked_course_id: payload.linked_course_id,
       linked_course_name: course.title_en,
       template_id: payload.template_id,
-      issued_at: new Date().toISOString(),
-      verification_status: "unverified",
+      issued_at: payload.issued_at ?? new Date().toISOString(),
+      verification_status: payload.verification_status ?? "unverified",
       generated_by: payload.generated_by,
     });
     return item.toJSON();

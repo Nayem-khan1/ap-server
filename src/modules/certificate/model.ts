@@ -20,6 +20,7 @@ export interface ICertificateTemplate {
 
 export interface IIssuedCertificate {
   certificate_no: string;
+  student_id?: string;
   student_name: string;
   linked_course_id: string;
   linked_course_name: string;
@@ -57,6 +58,7 @@ const templateSchema = new Schema<ICertificateTemplate>(
 const issuedSchema = new Schema<IIssuedCertificate>(
   {
     certificate_no: { type: String, required: true, unique: true, index: true },
+    student_id: { type: String, default: undefined, index: true },
     student_name: { type: String, required: true },
     linked_course_id: { type: String, required: true, index: true },
     linked_course_name: { type: String, required: true },
@@ -92,4 +94,3 @@ export const CertificateTemplateModel =
 export const IssuedCertificateModel =
   (mongoose.models.IssuedCertificate as IssuedModel | undefined) ||
   model<IIssuedCertificate>("IssuedCertificate", issuedSchema);
-

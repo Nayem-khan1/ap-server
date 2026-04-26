@@ -24,6 +24,10 @@ import {
   IssuedCertificateModel,
 } from "../src/modules/certificate/model";
 import { SettingsModel } from "../src/modules/settings/model";
+import {
+  StudentActivityModel,
+  StudentLessonProgressModel,
+} from "../src/modules/student/model";
 
 type SeedContentDefinition = {
   type: "video" | "pdf" | "quiz" | "assignment" | "resource";
@@ -93,6 +97,137 @@ type SeedCourseDefinition = {
   modules: SeedModuleDefinition[];
 };
 
+const DEFAULT_DUMMY_PDF_URL =
+  "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf";
+
+function toSeedKey(value: string): string {
+  return (
+    value
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "") || "lesson"
+  );
+}
+
+function buildLessonQuizQuestions(lessonTitleEn: string) {
+  const lessonKey = toSeedKey(lessonTitleEn);
+
+  return [
+    {
+      id: `${lessonKey}-q1`,
+      question_en: "What is the primary source of energy for stars?",
+      question_bn: "নক্ষত্রের প্রধান শক্তির উৎস কী?",
+      question_type: "MCQ",
+      options: [
+        "Nuclear Fission",
+        "Nuclear Fusion",
+        "Chemical Burning",
+        "Gravitational Collapse",
+      ],
+      correct_answer: "Nuclear Fusion",
+      explanation_en:
+        "Stars generate energy through nuclear fusion of hydrogen into helium.",
+      explanation_bn: "নক্ষত্র নিউক্লিয়ার ফিউশনের মাধ্যমে শক্তি উৎপন্ন করে।",
+    },
+    {
+      id: `${lessonKey}-q2`,
+      question_en: `Which topic is directly covered in the lesson "${lessonTitleEn}"?`,
+      question_bn: `এই লেসনে "${lessonTitleEn}" সম্পর্কিত কোন বিষয়টি আলোচনা করা হয়েছে?`,
+      question_type: "MCQ",
+      options: [
+        lessonTitleEn,
+        "Cell Division",
+        "Plate Tectonics",
+        "Ocean Currents",
+      ],
+      correct_answer: lessonTitleEn,
+      explanation_en:
+        "The lesson title itself signals the main concept being explained.",
+      explanation_bn:
+        "লেসনের শিরোনাম থেকেই বোঝা যায় মূল আলোচ্য বিষয়টি কী।",
+    },
+    {
+      id: `${lessonKey}-q3`,
+      question_en: "True or False: The Sun is a star.",
+      question_bn: "সত্য বা মিথ্যা: সূর্য একটি নক্ষত্র।",
+      question_type: "TRUE_FALSE",
+      options: ["True", "False"],
+      correct_answer: "True",
+      explanation_en: "The Sun is a G-type main-sequence star.",
+      explanation_bn: "সূর্য একটি প্রধান-পর্যায়ের নক্ষত্র।",
+    },
+  ];
+}
+
+function enrichLessonDefinition(lesson: SeedLessonDefinition): SeedLessonDefinition {
+  const contentPriority: Record<SeedContentDefinition["type"], number> = {
+    video: 0,
+    quiz: 1,
+    pdf: 2,
+    assignment: 3,
+    resource: 4,
+  };
+  const normalizedContents = lesson.contents.map((content) => {
+    if (content.type !== "pdf") {
+      return content;
+    }
+
+    return {
+      ...content,
+      pdf_data: {
+        title_en:
+          content.pdf_data?.title_en || `${lesson.title_en} Smart Note`,
+        title_bn:
+          content.pdf_data?.title_bn || `${lesson.title_bn} স্মার্ট নোট`,
+        file_url: DEFAULT_DUMMY_PDF_URL,
+        downloadable: true,
+      },
+    };
+  });
+
+  const hasPdf = normalizedContents.some((content) => content.type === "pdf");
+  const hasQuiz = normalizedContents.some((content) => content.type === "quiz");
+
+  if (!hasPdf) {
+    normalizedContents.push({
+      type: "pdf",
+      pdf_data: {
+        title_en: `${lesson.title_en} Smart Note`,
+        title_bn: `${lesson.title_bn} স্মার্ট নোট`,
+        file_url: DEFAULT_DUMMY_PDF_URL,
+        downloadable: true,
+      },
+    });
+  }
+
+  if (!hasQuiz) {
+    normalizedContents.push({
+      type: "quiz",
+      quiz_data: {
+        title: `${lesson.title_en} Quiz`,
+        time_limit: 10,
+        pass_mark: 60,
+        questions: buildLessonQuizQuestions(lesson.title_en),
+      },
+    });
+  }
+
+  return {
+    ...lesson,
+    contents: normalizedContents.sort(
+      (left, right) => contentPriority[left.type] - contentPriority[right.type],
+    ),
+  };
+}
+
+function enrichModules(modules: SeedModuleDefinition[]): SeedModuleDefinition[] {
+  return modules.map((module) => ({
+    ...module,
+    lessons: module.lessons.map((lesson) => enrichLessonDefinition(lesson)),
+  }));
+}
+
 async function runSeed() {
   await connectDatabase();
 
@@ -115,6 +250,8 @@ async function runSeed() {
     CertificateTemplateModel.deleteMany({}),
     IssuedCertificateModel.deleteMany({}),
     SettingsModel.deleteMany({}),
+    StudentLessonProgressModel.deleteMany({}),
+    StudentActivityModel.deleteMany({}),
   ]);
 
   const adminUser = await UserModel.create({
@@ -147,6 +284,17 @@ async function runSeed() {
       status: "active",
       bio: "Olympiad trainer with practical astronomy teaching experience.",
       specialization: "Observational Astronomy",
+      publish_status: "published",
+    },
+    {
+      name: "Syeda Tasnuva Jahan",
+      email: "tasnuva@astronomypathshala.com",
+      username: "tasnuva",
+      password: "Instructor@123",
+      role: "instructor",
+      status: "active",
+      bio: "Theoretical physicist and galaxy evolution researcher guiding advanced learners through modern galaxy science.",
+      specialization: "Galaxy Evolution",
       publish_status: "published",
     },
   ]);
@@ -224,46 +372,6 @@ async function runSeed() {
     categories.map((item) => [item.slug, item] as const),
   );
 
-  const dummyQuizQuestions = [
-    {
-      id: "q1",
-      question_en: "What is the primary source of energy for stats?",
-      question_bn: "নক্ষত্রের প্রধান শক্তির উৎস কী?",
-      question_type: "MCQ",
-      options: [
-        "Nuclear Fission",
-        "Nuclear Fusion",
-        "Chemical Burning",
-        "Gravitational Collapse",
-      ],
-      correct_answer: "Nuclear Fusion",
-      explanation_en:
-        "Stars generate energy through nuclear fusion of hydrogen into helium.",
-      explanation_bn: "নক্ষত্র নিউক্লিয়ার ফিউশনের মাধ্যমে শক্তি উৎপন্ন করে।",
-    },
-    {
-      id: "q2",
-      question_en: "Which of the following is considered a deep space object?",
-      question_bn: "নিচের কোনটি গভীর মহাকাশের বস্তু?",
-      question_type: "MCQ",
-      options: ["Comet", "Asteroid", "Galaxy", "Meteorite"],
-      correct_answer: "Galaxy",
-      explanation_en:
-        "Galaxies are large collections of stars outside our solar system.",
-      explanation_bn: "গ্যালাক্সি আমাদের সৌরজগতের বাইরের বিশাল নক্ষত্রজগৎ।",
-    },
-    {
-      id: "q3",
-      question_en: "True or False: The Sun is a star.",
-      question_bn: "সত্য বা মিথ্যা: সূর্য একটি নক্ষত্র।",
-      question_type: "TRUE_FALSE",
-      options: ["True", "False"],
-      correct_answer: "True",
-      explanation_en: "The Sun is a G-type main-sequence star.",
-      explanation_bn: "সূর্য একটি প্রধান-পর্যায়ের নক্ষত্র।",
-    },
-  ];
-
   const basicAstronomyModules: SeedModuleDefinition[] = [
     {
       title_en: "Foundations of Astronomy",
@@ -295,7 +403,7 @@ async function runSeed() {
                 title: "Basic Physics Quiz",
                 time_limit: 10,
                 pass_mark: 60,
-                questions: dummyQuizQuestions,
+                questions: buildLessonQuizQuestions("Basic Physics"),
               },
             },
           ],
@@ -326,7 +434,9 @@ async function runSeed() {
                 title: "Intro Quiz",
                 time_limit: 10,
                 pass_mark: 60,
-                questions: dummyQuizQuestions,
+                questions: buildLessonQuizQuestions(
+                  "Introduction to Astronomy & Astrophysics",
+                ),
               },
             },
           ],
@@ -457,6 +567,143 @@ async function runSeed() {
     },
   ];
 
+  const galaxyEvolutionModules: SeedModuleDefinition[] = [
+    {
+      title_en: "Galaxy Foundations",
+      title_bn: "গ্যালাক্সির ভিত্তি",
+      lessons: [
+        {
+          title_en: "Introduction to the Galaxy Evolution | Part - 01",
+          title_bn: "গ্যালাক্সি ইভোলিউশন পরিচিতি | পর্ব - ০১",
+          contents: [
+            {
+              type: "video",
+              video_data: { url: "https://youtu.be/S2jjs9yq5hs", duration: "58:00" },
+            },
+          ],
+        },
+        {
+          title_en: "Introduction to the Galaxy Evolution | Part - 02",
+          title_bn: "গ্যালাক্সি ইভোলিউশন পরিচিতি | পর্ব - ০২",
+          contents: [
+            {
+              type: "video",
+              video_data: { url: "https://youtu.be/D9Qw5GRwB9w", duration: "58:00" },
+            },
+          ],
+        },
+        {
+          title_en: "Introduction to the Galaxy Evolution | Part - 03 & 04",
+          title_bn: "গ্যালাক্সি ইভোলিউশন পরিচিতি | পর্ব - ০৩ ও ০৪",
+          contents: [
+            {
+              type: "video",
+              video_data: { url: "https://youtu.be/JtYV-crCkxM", duration: "64:00" },
+            },
+          ],
+        },
+      ],
+    },
+    {
+      title_en: "Galaxy Systems",
+      title_bn: "গ্যালাক্সি সিস্টেম",
+      lessons: [
+        {
+          title_en: "Galaxies",
+          title_bn: "গ্যালাক্সিসমূহ",
+          contents: [
+            {
+              type: "video",
+              video_data: { url: "https://youtu.be/7G8d3Ow9BJY", duration: "52:00" },
+            },
+          ],
+        },
+        {
+          title_en: "Milky Way Galaxy",
+          title_bn: "মিল্কিওয়ে গ্যালাক্সি",
+          contents: [
+            {
+              type: "video",
+              video_data: { url: "https://youtu.be/P6wPCFRQeh8", duration: "58:00" },
+            },
+          ],
+        },
+        {
+          title_en: "Dwarf Galaxies, Starbursts and AGN",
+          title_bn: "ডোয়ার্ফ গ্যালাক্সি, স্টারবার্স্ট ও AGN",
+          contents: [
+            {
+              type: "video",
+              video_data: { url: "https://youtu.be/aerwcvzFEzU", duration: "59:00" },
+            },
+          ],
+        },
+      ],
+    },
+    {
+      title_en: "Galaxy Environments",
+      title_bn: "গ্যালাক্সির পরিবেশ",
+      lessons: [
+        {
+          title_en: "Clusters and Groups | Part - 01",
+          title_bn: "ক্লাস্টার ও গ্রুপ | পর্ব - ০১",
+          contents: [
+            {
+              type: "video",
+              video_data: { url: "https://youtu.be/5N5Th-3ShPY", duration: "53:00" },
+            },
+          ],
+        },
+        {
+          title_en: "Clusters and Groups | Part - 02",
+          title_bn: "ক্লাস্টার ও গ্রুপ | পর্ব - ০২",
+          contents: [
+            {
+              type: "video",
+              video_data: { url: "https://youtu.be/GtzqWxcz8ww", duration: "56:00" },
+            },
+          ],
+        },
+      ],
+    },
+    {
+      title_en: "Evolution Pathways",
+      title_bn: "বিবর্তনের ধাপসমূহ",
+      lessons: [
+        {
+          title_en: "Galaxy Evolution",
+          title_bn: "গ্যালাক্সি ইভোলিউশন",
+          contents: [
+            {
+              type: "video",
+              video_data: { url: "https://youtu.be/2veoXy4n2jc", duration: "57:00" },
+            },
+          ],
+        },
+        {
+          title_en: "Galaxy Quenching",
+          title_bn: "গ্যালাক্সি কোয়েঞ্চিং",
+          contents: [
+            {
+              type: "video",
+              video_data: { url: "https://youtu.be/C6Q_vDWmwpY", duration: "56:00" },
+            },
+          ],
+        },
+        {
+          title_en: "Classification of Galaxies",
+          title_bn: "গ্যালাক্সির শ্রেণিবিন্যাস",
+          contents: [
+            {
+              type: "video",
+              video_data: { url: "https://youtu.be/2oDC-8XOlD8", duration: "61:00" },
+            },
+          ],
+        },
+      ],
+    },
+  ];
+
   const courseBlueprints: SeedCourseDefinition[] = [
     {
       title_en: "Basic Astronomy Crash Course | Level-01",
@@ -519,6 +766,71 @@ async function runSeed() {
       discount_price: 999,
       publish_status: "published",
       modules: basicAstronomyModules,
+    },
+    {
+      title_en: "Galaxy Evolution Crash Course",
+      title_bn: "গ্যালাক্সি ইভোলিউশন ক্র্যাশ কোর্স",
+      subtitle_en:
+        "Learn how galaxies form, evolve, cluster, and eventually quench across cosmic time.",
+      subtitle_bn:
+        "গ্যালাক্সি কীভাবে গঠিত হয়, বিবর্তিত হয়, ক্লাস্টার গঠন করে এবং কোয়েঞ্চিংয়ের মধ্য দিয়ে যায় তা সহজভাবে শিখুন।",
+      slug: "galaxy-evolution-crash-course",
+      category_slug: "astrophysics",
+      intro_video_url: "https://youtu.be/S2jjs9yq5hs",
+      description_en:
+        "Galaxy Evolution Crash Course is designed for astronomy enthusiasts who want a clear path from the basics of galaxies to advanced research ideas. Each class includes a quiz and a smart note so learners can revise the concepts after every lesson.",
+      description_bn:
+        "আমরা যারা জ্যোতির্বিজ্ঞান নিয়ে খুব বেশি আগ্রহী তাঁদের কাছে গ্যালাক্সি একটি চমৎকার বিষয়। আমাদের দেশে জ্যোতির্বিজ্ঞান চর্চার সুযোগ সীমিত হওয়ায় এই উচ্চতর বিষয়গুলো শেখার সুযোগও খুব কম। সেই ধারাবাহিকতায় BARC নিয়ে এসেছে “Galaxy Evolution Crash Course”। প্রত্যেক ক্লাসের পর রয়েছে কুইজ এবং প্রতিটি ক্লাসের সঙ্গে রয়েছে লেকচার শিট, যাতে শেখা বিষয়গুলো বারবার ঝালাই করা যায়।",
+      requirements_en: [
+        "Basic astronomy interest",
+        "Comfort following English lecture videos",
+      ],
+      requirements_bn: [
+        "জ্যোতির্বিজ্ঞানের প্রতি আগ্রহ",
+        "ইংরেজি লেকচার অনুসরণ করার সক্ষমতা",
+      ],
+      learning_objectives_en: [
+        "Build a roadmap for future galaxy studies",
+        "Explain how galaxies evolve over cosmic time",
+        "Understand core research ideas in galaxy evolution",
+        "Move from basic to advanced galaxy concepts",
+      ],
+      learning_objectives_bn: [
+        "ভবিষ্যতে গ্যালাক্সি নিয়ে পড়াশোনার একটি পরিষ্কার গাইডলাইন পাওয়া",
+        "গ্যালাক্সিগুলো কীভাবে বিবর্তিত হয় তা ব্যাখ্যা করতে পারা",
+        "গ্যালাক্সি গবেষণার মৌলিক ধারণা তৈরি করা",
+        "বেসিক থেকে অ্যাডভান্সড পর্যন্ত গ্যালাক্সির ধারণা গড়ে তোলা",
+      ],
+      targeted_audience_en: [
+        "Learners who want advanced galaxy study",
+        "University students preparing for astrophysics research",
+        "Aspiring researchers interested in galaxy evolution",
+      ],
+      targeted_audience_bn: [
+        "যারা গ্যালাক্সি বিষয়ে অ্যাডভান্সড পড়াশোনা করতে চায়",
+        "বিশ্ববিদ্যালয় পর্যায়ের শিক্ষার্থী",
+        "যারা ভবিষ্যতে গ্যালাক্সি নিয়ে গবেষণা করতে চায়",
+      ],
+      faqs: [
+        {
+          question_en: "Does every class include revision support?",
+          answer_en:
+            "Yes. Every class includes a quiz and a smart note for quick revision.",
+          question_bn: "প্রতিটি ক্লাসের সাথে কি রিভিশন সাপোর্ট আছে?",
+          answer_bn:
+            "হ্যাঁ। প্রতিটি ক্লাসের সাথে কুইজ ও স্মার্ট নোট রয়েছে।",
+        },
+      ],
+      instructor_index: 2,
+      level: "intermediate",
+      language: "en",
+      grade: "University & Early Researchers",
+      duration: "10h 52m",
+      is_free: false,
+      price: 2600,
+      discount_price: 2199,
+      publish_status: "published",
+      modules: galaxyEvolutionModules,
     },
     {
       title_en: "Astrophysics Essentials",
@@ -782,9 +1094,18 @@ async function runSeed() {
     },
   ];
 
-  const courses: any[] = [];
+  const seededCourseBlueprints = courseBlueprints.map((definition) => ({
+    ...definition,
+    modules: enrichModules(definition.modules),
+  }));
 
-  for (const definition of courseBlueprints) {
+  const courses: any[] = [];
+  const lessonCatalogByCourseId = new Map<
+    string,
+    Array<{ id: string; module_id: string; title_en: string }>
+  >();
+
+  for (const definition of seededCourseBlueprints) {
     const category = categoryBySlug.get(definition.category_slug);
     if (!category) {
       throw new Error(`Missing category for ${definition.category_slug}`);
@@ -823,6 +1144,11 @@ async function runSeed() {
     });
 
     let totalLessons = 0;
+    const orderedLessonsForCourse: Array<{
+      id: string;
+      module_id: string;
+      title_en: string;
+    }> = [];
 
     for (
       let moduleIndex = 0;
@@ -843,10 +1169,6 @@ async function runSeed() {
         lessonIndex += 1
       ) {
         const lessonDefinition = moduleDefinition.lessons[lessonIndex];
-        const hasVideos = lessonDefinition.contents?.some(
-          (c) => c.type === "video",
-        );
-
         const lesson = await LessonModel.create({
           course_id: course.id,
           module_id: module.id,
@@ -857,6 +1179,11 @@ async function runSeed() {
           order_no: lessonIndex + 1,
           publish_status:
             definition.publish_status === "published" ? "published" : "draft",
+        });
+        orderedLessonsForCourse.push({
+          id: lesson.id,
+          module_id: module.id,
+          title_en: lesson.title_en,
         });
 
         let contentOrder = 1;
@@ -885,6 +1212,7 @@ async function runSeed() {
 
     course.total_lessons = totalLessons;
     await course.save();
+    lessonCatalogByCourseId.set(course.id, orderedLessonsForCourse);
     courses.push(course);
   }
 
@@ -893,9 +1221,25 @@ async function runSeed() {
   for (let index = 0; index < 10; index += 1) {
     const student = students[index];
     const course = enrolledCourseSubset[index % enrolledCourseSubset.length];
+    const lessonCatalog = lessonCatalogByCourseId.get(String(course.id)) ?? [];
+    const completedLessonCount =
+      index === 4
+        ? lessonCatalog.length
+        : Math.min(index, Math.max(lessonCatalog.length - 1, 0));
+    const completedLessons = lessonCatalog
+      .slice(0, completedLessonCount)
+      .map((lesson) => lesson.id);
+    const progressPercent = lessonCatalog.length
+      ? Math.round((completedLessons.length / lessonCatalog.length) * 100)
+      : 0;
+    const enrollmentStatus = progressPercent >= 100 ? "completed" : "active";
+    const activeLesson =
+      lessonCatalog[completedLessons.length] ??
+      lessonCatalog[Math.max(completedLessons.length - 1, 0)] ??
+      null;
 
     if (index < 5) {
-      await EnrollmentModel.create({
+      const enrollment = await EnrollmentModel.create({
         student_id: student.id,
         student_name: student.name,
         course_id: course.id,
@@ -903,10 +1247,13 @@ async function runSeed() {
         enrolled_at: new Date(Date.now() - index * 86400000).toISOString(),
         enrollment_type: "manual",
         payment_status: course.is_free ? "free" : "paid",
-        progress_percent: index * 10,
-        completed_lessons: [],
-        completed_at: null,
-        status: "active",
+        progress_percent: progressPercent,
+        completed_lessons: completedLessons,
+        completed_at:
+          enrollmentStatus === "completed"
+            ? new Date(Date.now() - index * 43200000).toISOString()
+            : null,
+        status: enrollmentStatus,
         access_status: "active",
       });
 
@@ -914,13 +1261,84 @@ async function runSeed() {
         student_id: student.id,
         student_name: student.name,
         course: course.title_en,
-        lesson: `Lesson 1 of ${course.title_en}`,
+        lesson: activeLesson?.title_en ?? `Lesson 1 of ${course.title_en}`,
         current_step: "VIDEO",
-        video_watch_percent: index * 10,
-        quiz_score: index * 8,
-        smart_note_generated: index % 2 === 0,
-        completion_status: index % 2 === 0 ? "in_progress" : "completed",
+        video_watch_percent:
+          enrollmentStatus === "completed"
+            ? 100
+            : completedLessons.length > 0
+              ? Math.min(95, progressPercent + 15)
+              : 0,
+        quiz_score:
+          completedLessons.length > 0 ? Math.min(100, 55 + index * 9) : 0,
+        smart_note_generated: completedLessons.length > 0,
+        completion_status:
+          enrollmentStatus === "completed"
+            ? "completed"
+            : completedLessons.length > 0
+              ? "in_progress"
+              : "stalled",
       });
+
+      for (const [lessonIndex, lesson] of lessonCatalog.entries()) {
+        const isCompleted = completedLessons.includes(lesson.id);
+        const isCurrentLesson =
+          !isCompleted && activeLesson && lesson.id === activeLesson.id;
+
+        if (!isCompleted && !isCurrentLesson) {
+          continue;
+        }
+
+        const quizScore = isCompleted
+          ? Math.min(100, 72 + lessonIndex * 6)
+          : completedLessons.length > 0
+            ? Math.min(95, 58 + index * 8)
+            : 0;
+
+        await StudentLessonProgressModel.create({
+          student_id: student.id,
+          course_id: course.id,
+          module_id: lesson.module_id,
+          lesson_id: lesson.id,
+          video_watch_percent: isCompleted ? 100 : completedLessons.length > 0 ? 100 : 35,
+          video_completed: isCompleted || completedLessons.length > 0,
+          quiz_completed: isCompleted,
+          quiz_score: quizScore,
+          note_completed: isCompleted,
+          lesson_completed: isCompleted,
+          current_step: isCompleted
+            ? "completed"
+            : completedLessons.length > 0
+              ? "quiz"
+              : "video",
+          completed_at: isCompleted
+            ? new Date(Date.now() - (lessonIndex + 1) * 3600000).toISOString()
+            : null,
+        });
+      }
+
+      const activityOffsets = [0, 1, 2, 4, 6];
+
+      await StudentActivityModel.create({
+        student_id: student.id,
+        type: "login",
+        course_id: course.id,
+        occurred_at: new Date(
+          Date.now() - activityOffsets[index % activityOffsets.length] * 86400000,
+        ).toISOString(),
+      });
+
+      if (completedLessons.length > 0) {
+        await StudentActivityModel.create({
+          student_id: student.id,
+          type: "lesson_completed",
+          course_id: course.id,
+          lesson_id: completedLessons[completedLessons.length - 1],
+          occurred_at: new Date(
+            Date.now() - (activityOffsets[index % activityOffsets.length] + 1) * 86400000,
+          ).toISOString(),
+        });
+      }
 
       await PaymentModel.create({
         trx_id: `BKASH-SEED-${index + 1}`,
@@ -935,8 +1353,19 @@ async function runSeed() {
         status: index % 3 === 0 ? "pending" : "verified",
         submitted_at: new Date(Date.now() - index * 3600000).toISOString(),
         manually_verified_by: index % 3 === 0 ? null : adminUser.name,
+        enrollment_id: enrollment.id,
       });
     }
+  }
+
+  for (const student of students) {
+    const enrolledCoursesCount = await EnrollmentModel.countDocuments({
+      student_id: student.id,
+    });
+
+    await UserModel.findByIdAndUpdate(student.id, {
+      enrolled_courses_count: enrolledCoursesCount,
+    });
   }
 
   await CouponModel.create({
@@ -1070,6 +1499,7 @@ async function runSeed() {
 
   await IssuedCertificateModel.create({
     certificate_no: "APS-CERT-SEED-001",
+    student_id: students[0].id,
     student_name: students[0].name,
     linked_course_id: courses[0].id,
     linked_course_name: courses[0].title_en,
