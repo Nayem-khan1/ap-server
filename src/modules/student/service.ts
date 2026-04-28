@@ -8,6 +8,7 @@ import { certificateService } from "../certificate/service";
 import { CourseModel, CourseModuleModel } from "../course/model";
 import { EnrollmentModel, ProgressModel } from "../enrollment/model";
 import { LessonContentModel, LessonModel } from "../lesson/model";
+import { normalizeLessonContentDocument } from "../lesson/content-normalizer";
 import { PaymentModel } from "../payment/model";
 import { paymentService } from "../payment/service";
 import { UserModel } from "../user/model";
@@ -239,12 +240,12 @@ function resolveLearningStep(input: {
     return "note";
   }
 
-  if (input.hasNote) {
-    return "note";
-  }
-
   if (input.hasQuiz) {
     return "quiz";
+  }
+
+  if (input.hasNote) {
+    return "note";
   }
 
   if (input.hasVideo) {
@@ -316,6 +317,88 @@ function normalizeQuestionType(
   }
 
   return "MCQ";
+}
+
+function normalizeLessonContentRecords(
+  contents: Array<{ toJSON: () => Record<string, unknown> }>,
+) {
+  return contents.map((content) =>
+    normalizeLessonContentDocument(content.toJSON() as Record<string, unknown>),
+  );
+}
+
+type QuizCardResult = {
+  content_id: string;
+  title: string;
+  correct_count: number;
+  total_questions: number;
+  percent: number;
+  pass_mark: number;
+  passed: boolean;
+};
+
+function buildQuizCardResult(input: {
+  content: Record<string, unknown>;
+  lessonId: string;
+  fallbackIndex: number;
+  submittedAnswers: Record<string, string[]>;
+}): QuizCardResult {
+  const quizData =
+    input.content.quiz_data && typeof input.content.quiz_data === "object"
+      ? (input.content.quiz_data as Record<string, unknown>)
+      : {};
+  const rawQuestions = Array.isArray(quizData.questions) ? quizData.questions : [];
+  const correctCount = rawQuestions.reduce((count, question, index) => {
+    const value =
+      question && typeof question === "object"
+        ? (question as Record<string, unknown>)
+        : {};
+    const questionId =
+      typeof value.id === "string"
+        ? value.id
+        : `${input.lessonId}-question-${input.fallbackIndex + 1}-${index + 1}`;
+    const selectedAnswers = Array.isArray(input.submittedAnswers[questionId])
+      ? input.submittedAnswers[questionId]
+      : [];
+
+    return count + (isSubmittedAnswerCorrect(value.correct_answer, selectedAnswers) ? 1 : 0);
+  }, 0);
+  const totalQuestions = rawQuestions.length;
+  const percent = totalQuestions
+    ? Math.round((correctCount / totalQuestions) * 100)
+    : 100;
+  const passMark =
+    typeof quizData.pass_mark === "number" ? quizData.pass_mark : 70;
+
+  return {
+    content_id:
+      typeof input.content.id === "string"
+        ? input.content.id
+        : `${input.lessonId}-quiz-${input.fallbackIndex + 1}`,
+    title: typeof quizData.title === "string" ? quizData.title : "",
+    correct_count: correctCount,
+    total_questions: totalQuestions,
+    percent,
+    pass_mark: passMark,
+    passed: percent >= passMark,
+  };
+}
+
+function calculateAggregateQuizPassMark(cards: QuizCardResult[]): number {
+  const weightedTotal = cards.reduce(
+    (sum, card) => sum + card.pass_mark * Math.max(card.total_questions, 1),
+    0,
+  );
+  const weightedCount = cards.reduce(
+    (sum, card) => sum + Math.max(card.total_questions, 1),
+    0,
+  );
+
+  if (!weightedCount) {
+    return 70;
+  }
+
+  return Math.round(weightedTotal / weightedCount);
 }
 
 async function ensureStudent(userId: string) {
@@ -466,34 +549,48 @@ async function buildLessonContentsMap(lessonIds: string[], lang: Language) {
   }).sort({ order_no: 1 });
 
   for (const item of lessonContents) {
-    if (item.type !== "video" && item.type !== "pdf" && item.type !== "quiz") {
+    const normalizedItem = normalizeLessonContentDocument(
+      item.toJSON() as Record<string, unknown>,
+    );
+
+    if (
+      normalizedItem.type !== "video" &&
+      normalizedItem.type !== "pdf" &&
+      normalizedItem.type !== "quiz"
+    ) {
       continue;
     }
 
-    const lessonId = String(item.lesson_id);
+    const contentType = normalizedItem.type as LessonContentItem["type"];
+    const unlockCondition =
+      normalizedItem.unlock_condition === "auto_unlock" ||
+      normalizedItem.unlock_condition === "after_quiz_pass"
+        ? normalizedItem.unlock_condition
+        : "after_previous_completed";
+    const lessonId = String(normalizedItem.lesson_id ?? "");
     const currentItems = lessonContentsByLessonId.get(lessonId) ?? [];
     const videoData =
-      item.video_data && typeof item.video_data === "object"
-        ? (item.video_data as Record<string, unknown>)
+      normalizedItem.video_data && typeof normalizedItem.video_data === "object"
+        ? (normalizedItem.video_data as Record<string, unknown>)
         : null;
     const pdfData =
-      item.pdf_data && typeof item.pdf_data === "object"
-        ? (item.pdf_data as Record<string, unknown>)
+      normalizedItem.pdf_data && typeof normalizedItem.pdf_data === "object"
+        ? (normalizedItem.pdf_data as Record<string, unknown>)
         : null;
     const quizData =
-      item.quiz_data && typeof item.quiz_data === "object"
-        ? (item.quiz_data as Record<string, unknown>)
+      normalizedItem.quiz_data && typeof normalizedItem.quiz_data === "object"
+        ? (normalizedItem.quiz_data as Record<string, unknown>)
         : null;
     const rawQuestions = Array.isArray(quizData?.questions) ? quizData.questions : [];
 
     currentItems.push({
-      id: String(item.id),
-      type: item.type,
-      order_no: item.order_no,
-      unlock_condition: item.unlock_condition,
-      is_preview: Boolean(item.is_preview),
+      id: String(normalizedItem.id ?? ""),
+      type: contentType,
+      order_no: Number(normalizedItem.order_no ?? currentItems.length + 1),
+      unlock_condition: unlockCondition as LessonContentItem["unlock_condition"],
+      is_preview: Boolean(normalizedItem.is_preview),
       video:
-        item.type === "video"
+        contentType === "video"
           ? {
               url: typeof videoData?.url === "string" ? videoData.url : "",
               duration:
@@ -507,7 +604,7 @@ async function buildLessonContentsMap(lessonIds: string[], lang: Language) {
             }
           : null,
       pdf:
-        item.type === "pdf"
+        contentType === "pdf"
           ? {
               title: pdfData
                 ? readLocalizedContentField(
@@ -523,7 +620,7 @@ async function buildLessonContentsMap(lessonIds: string[], lang: Language) {
             }
           : null,
       quiz:
-        item.type === "quiz"
+        contentType === "quiz"
           ? {
               title: typeof quizData?.title === "string" ? quizData.title : "",
               time_limit:
@@ -645,7 +742,11 @@ function decorateLessonContents(
   },
 ): DecoratedLessonContentItem[] {
   const hasVideo = contents.some((content) => content.type === "video");
-  const hasQuiz = contents.some((content) => content.type === "quiz");
+  const supplementalContentUnlocked =
+    input.lessonUnlocked &&
+    (!hasVideo ||
+      input.progress.video_completed ||
+      input.progress.lesson_completed);
 
   return contents.map((content) => {
     let isUnlocked = false;
@@ -656,25 +757,14 @@ function decorateLessonContents(
       isCompleted = input.progress.video_completed || input.progress.lesson_completed;
     }
 
-    if (content.type === "quiz") {
-      isUnlocked =
-        input.lessonUnlocked &&
-        (!hasVideo ||
-          input.progress.video_completed ||
-          input.progress.lesson_completed);
-      isCompleted = input.progress.quiz_completed || input.progress.lesson_completed;
+    if (content.type === "pdf") {
+      isUnlocked = supplementalContentUnlocked;
+      isCompleted = input.progress.note_completed || input.progress.lesson_completed;
     }
 
-    if (content.type === "pdf") {
-      isUnlocked =
-        input.lessonUnlocked &&
-        (!hasVideo ||
-          input.progress.video_completed ||
-          input.progress.lesson_completed) &&
-        (!hasQuiz ||
-          input.progress.quiz_completed ||
-          input.progress.lesson_completed);
-      isCompleted = input.progress.note_completed || input.progress.lesson_completed;
+    if (content.type === "quiz") {
+      isUnlocked = supplementalContentUnlocked;
+      isCompleted = input.progress.quiz_completed || input.progress.lesson_completed;
     }
 
     return {
@@ -1256,9 +1346,11 @@ async function resolveLessonActionContext(
     );
   }
 
-  const lessonContents = await LessonContentModel.find({ lesson_id: lessonId }).sort({
-    order_no: 1,
-  });
+  const lessonContents = normalizeLessonContentRecords(
+    await LessonContentModel.find({ lesson_id: lessonId }).sort({
+      order_no: 1,
+    }),
+  );
 
   return {
     student,
@@ -1718,49 +1810,44 @@ export const studentService = {
       );
     }
 
-    const quizContent = lessonContents.find((content) => content.type === "quiz");
-    const quizData =
-      quizContent?.quiz_data && typeof quizContent.quiz_data === "object"
-        ? (quizContent.quiz_data as Record<string, unknown>)
-        : null;
-    const rawQuestions = Array.isArray(quizData?.questions) ? quizData.questions : [];
+    const quizContents = lessonContents.filter((content) => content.type === "quiz");
 
-    if (!quizContent) {
+    if (!quizContents.length) {
       throw new AppError(StatusCodes.BAD_REQUEST, "No quiz is available for this lesson");
     }
 
     const submittedAnswers = payload.answers ?? {};
-    const correctCount = rawQuestions.reduce((count, question, index) => {
-      const value =
-        question && typeof question === "object"
-          ? (question as Record<string, unknown>)
-          : {};
-      const questionId =
-        typeof value.id === "string"
-          ? value.id
-          : `${lessonId}-question-${index + 1}`;
-      const selectedAnswers = Array.isArray(submittedAnswers[questionId])
-        ? submittedAnswers[questionId]
-        : [];
-
-      return count + (isSubmittedAnswerCorrect(value.correct_answer, selectedAnswers) ? 1 : 0);
-    }, 0);
-    const totalQuestions = rawQuestions.length;
+    const quizCards = quizContents.map((content, index) =>
+      buildQuizCardResult({
+        content,
+        lessonId,
+        fallbackIndex: index,
+        submittedAnswers,
+      }),
+    );
+    const correctCount = quizCards.reduce(
+      (sum, card) => sum + card.correct_count,
+      0,
+    );
+    const totalQuestions = quizCards.reduce(
+      (sum, card) => sum + card.total_questions,
+      0,
+    );
     const percent = totalQuestions
       ? Math.round((correctCount / totalQuestions) * 100)
       : 100;
-    const passMark =
-      typeof quizData?.pass_mark === "number" ? quizData.pass_mark : 70;
+    const passMark = calculateAggregateQuizPassMark(quizCards);
     const passed = percent >= passMark;
-    const nextQuizCompleted =
-      lessonState.progress.lesson_completed ||
-      lessonState.progress.quiz_completed ||
-      passed;
+    // A complete submission finishes the quiz step; pass mark is kept for feedback only.
+    const nextQuizCompleted = true;
     const nextLessonCompleted =
-      lessonState.progress.lesson_completed || (nextQuizCompleted && !hasNote);
+      lessonState.progress.lesson_completed ||
+      (nextQuizCompleted &&
+        (!hasNote || lessonState.progress.note_completed));
     const nextProgress: LessonProgressSnapshot = {
       ...lessonState.progress,
       video_completed: lessonState.progress.video_completed || !hasVideo,
+      note_completed: lessonState.progress.note_completed || !hasNote,
       quiz_completed: nextQuizCompleted,
       quiz_score: Math.max(lessonState.progress.quiz_score, percent),
       lesson_completed: nextLessonCompleted,
@@ -1810,6 +1897,7 @@ export const studentService = {
         percent,
         pass_mark: passMark,
         passed,
+        cards: quizCards,
       },
     };
   },
@@ -1828,21 +1916,31 @@ export const studentService = {
       );
     }
 
-    if (hasQuiz && !lessonState.progress.quiz_completed && !lessonState.progress.lesson_completed) {
-      throw new AppError(
-        StatusCodes.FORBIDDEN,
-        "Pass the lesson quiz before opening the notes",
-      );
-    }
+    const nextVideoCompleted = lessonState.progress.video_completed || !hasVideo;
+    const nextQuizCompleted = lessonState.progress.quiz_completed || !hasQuiz;
+    const nextLessonCompleted =
+      lessonState.progress.lesson_completed ||
+      !hasQuiz ||
+      lessonState.progress.quiz_completed;
 
     const nextProgress: LessonProgressSnapshot = {
       ...lessonState.progress,
-      video_completed: lessonState.progress.video_completed || !hasVideo,
-      quiz_completed: lessonState.progress.quiz_completed || !hasQuiz,
-      note_completed: lessonState.progress.note_completed || !hasNote || true,
-      lesson_completed: true,
-      current_step: "completed",
-      completed_at: lessonState.progress.completed_at ?? new Date().toISOString(),
+      video_completed: nextVideoCompleted,
+      quiz_completed: nextQuizCompleted,
+      note_completed: true,
+      lesson_completed: nextLessonCompleted,
+      current_step: resolveLearningStep({
+        hasVideo,
+        hasQuiz,
+        hasNote,
+        videoCompleted: nextVideoCompleted,
+        quizCompleted: nextQuizCompleted,
+        noteCompleted: true,
+        lessonCompleted: nextLessonCompleted,
+      }),
+      completed_at: nextLessonCompleted
+        ? lessonState.progress.completed_at ?? new Date().toISOString()
+        : null,
     };
 
     const mutation = await syncLessonMutation({

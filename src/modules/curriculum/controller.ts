@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { StatusCodes } from "http-status-codes";
 import { CourseModuleModel } from "../course/model";
 import { LessonModel, LessonContentModel } from "../lesson/model";
+import { normalizeLessonContentDocument } from "../lesson/content-normalizer";
 import { sendResponse } from "../../utils/send-response";
 import { catchAsync } from "../../utils/catch-async";
 
@@ -224,7 +225,9 @@ export const curriculumController = {
       statusCode: StatusCodes.OK,
       success: true,
       message: "Contents fetched successfully",
-      data: contents,
+      data: contents.map((content) =>
+        normalizeLessonContentDocument(content.toJSON() as Record<string, unknown>),
+      ),
     });
   }),
 
@@ -251,7 +254,9 @@ export const curriculumController = {
       statusCode: StatusCodes.CREATED,
       success: true,
       message: "Content created successfully",
-      data: newContent,
+      data: normalizeLessonContentDocument(
+        newContent.toJSON() as Record<string, unknown>,
+      ),
     });
   }),
 
@@ -272,7 +277,11 @@ export const curriculumController = {
       statusCode: StatusCodes.OK,
       success: true,
       message: "Content updated successfully",
-      data: updated,
+      data: updated
+        ? normalizeLessonContentDocument(
+            updated.toJSON() as Record<string, unknown>,
+          )
+        : updated,
     });
   }),
 
