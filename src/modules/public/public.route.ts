@@ -30,6 +30,12 @@ router.get(
 );
 
 router.get(
+  "/blog-categories",
+  validateRequest(publicValidation.listBlogCategories),
+  publicController.listBlogCategories,
+);
+
+router.get(
   "/blogs",
   validateRequest(publicValidation.listBlogs),
   publicController.listBlogs,
@@ -39,6 +45,12 @@ router.get(
   "/blogs/categories",
   validateRequest(publicValidation.listBlogCategories),
   publicController.listBlogCategories,
+);
+
+router.get(
+  "/authors",
+  validateRequest(publicValidation.listAuthors),
+  publicController.listAuthors,
 );
 
 router.get(

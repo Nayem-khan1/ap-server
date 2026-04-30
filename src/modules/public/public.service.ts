@@ -7,6 +7,7 @@ import {
 } from "../../utils/pagination";
 import { CourseCategoryModel, CourseModel, CourseModuleModel } from "../course/model";
 import { BlogModel } from "../blog/model";
+import { blogService } from "../blog/service";
 import { EventModel } from "../event/model";
 import { LessonContentModel, LessonModel } from "../lesson/model";
 import { UserModel } from "../user/model";
@@ -114,6 +115,10 @@ function normalizeText(value: unknown): string {
   return value.replace(/\r\n/g, "\n").trim();
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
 function slugify(value: string): string {
   return value
     .trim()
@@ -128,6 +133,43 @@ function buildExcerpt(value: string, maxLength = 180): string {
   if (!plain) return "";
   if (plain.length <= maxLength) return plain;
   return `${plain.slice(0, maxLength).replace(/\s+\S*$/, "").trimEnd()}...`;
+}
+
+function resolveBlogCategory(blog: Record<string, unknown>) {
+  const rawCategory = isRecord(blog.category) ? blog.category : null;
+  const name = normalizeText(rawCategory?.name ?? rawCategory?.title ?? blog.category);
+  const slug = normalizeText(rawCategory?.slug ?? blog.category_slug) || slugify(name);
+  const id = normalizeText(rawCategory?.id ?? blog.category_id) || slug;
+
+  return {
+    id,
+    name,
+    slug,
+  };
+}
+
+function resolveBlogAuthor(blog: Record<string, unknown>) {
+  const rawAuthor = isRecord(blog.author) ? blog.author : null;
+  const name = normalizeText(rawAuthor?.name ?? blog.author) || "Editorial Team";
+  const avatar = normalizeText(rawAuthor?.avatar ?? blog.author_avatar);
+  const bio = normalizeText(rawAuthor?.bio ?? blog.author_bio);
+  const id = normalizeText(rawAuthor?.id ?? blog.author_id) || slugify(name) || "editorial-team";
+
+  return {
+    id,
+    name,
+    avatar,
+    bio,
+  };
+}
+
+function resolveBlogSeo(blog: Record<string, unknown>) {
+  const rawSeo = isRecord(blog.seo) ? blog.seo : null;
+
+  return {
+    meta_title: normalizeText(rawSeo?.meta_title ?? blog.seo_title),
+    meta_description: normalizeText(rawSeo?.meta_description ?? blog.seo_description),
+  };
 }
 
 function localizeBlogBlocks(
@@ -159,7 +201,7 @@ function localizeBlogBlocks(
         return;
       }
 
-      if (type === "heading" || type === "text") {
+      if (type === "heading" || type === "text" || type === "quote") {
         const value = normalizeText(lang === "bn" ? block.value_bn : block.value_en);
         if (!value) return;
 
@@ -215,21 +257,33 @@ function blocksToText(blocks: Array<Record<string, unknown>>): string {
 function localizeBlog(blog: Record<string, unknown>, lang: Language) {
   const contentBlocks = localizeBlogBlocks(blog, lang);
   const content = blocksToText(contentBlocks);
-  const category = normalizeText(blog.category);
+  const category = resolveBlogCategory(blog);
+  const author = resolveBlogAuthor(blog);
   const thumbnail = normalizeText(blog.thumbnail ?? blog.featured_image);
+  const excerpt =
+    normalizeText(lang === "bn" ? blog.excerpt_bn : blog.excerpt_en) ||
+    buildExcerpt(content);
+  const subtitle =
+    normalizeText(lang === "bn" ? blog.subtitle_bn : blog.subtitle_en) ||
+    excerpt;
 
   return {
     ...blog,
     title: lang === "bn" ? blog.title_bn : blog.title_en,
+    subtitle,
     content_blocks: contentBlocks,
     content,
-    excerpt:
-      normalizeText(lang === "bn" ? blog.excerpt_bn : blog.excerpt_en) ||
-      buildExcerpt(content),
+    excerpt,
     category,
-    category_slug: normalizeText(blog.category_slug) || slugify(category),
+    category_name: category.name,
+    category_slug: category.slug,
+    author,
+    author_name: author.name,
+    author_avatar: author.avatar,
+    author_bio: author.bio,
     thumbnail,
     featured_image: thumbnail,
+    seo: resolveBlogSeo(blog),
     published_at: blog.published_at ?? blog.updated_at ?? blog.created_at,
     read_time: normalizeText(blog.read_time) || "1 min read",
   };
@@ -517,6 +571,7 @@ export const publicService = {
 
     if (query.category) {
       filter.$or = [
+        { category_id: query.category },
         { category: query.category },
         { category_slug: query.category },
       ];
@@ -545,38 +600,37 @@ export const publicService = {
   },
 
   async listBlogCategories(): Promise<Record<string, unknown>[]> {
-    const blogs = await BlogModel.find({
-      publish_status: "published",
-    }).select("category category_slug");
+    const categories = (await blogService.listCategories()) as Array<Record<string, unknown>>;
 
-    const categories = new Map<
-      string,
-      { id: string; title: string; slug: string; total_posts: number }
-    >();
+    return categories
+      .filter(
+        (category) =>
+          normalizeText(category.publish_status) === "published" &&
+          Number(category.published_count ?? 0) > 0,
+      )
+      .map((category) => ({
+        id: String(category.id ?? ""),
+        name: normalizeText(category.name ?? category.title),
+        title: normalizeText(category.name ?? category.title),
+        slug: normalizeText(category.slug),
+        total_posts: Number(category.published_count ?? category.usage_count ?? 0),
+      }))
+      .sort((left, right) => left.title.localeCompare(right.title));
+  },
 
-    for (const item of blogs) {
-      const data = item.toJSON() as Record<string, unknown>;
-      const title = normalizeText(data.category);
-      const slug = normalizeText(data.category_slug) || slugify(title);
+  async listAuthors(): Promise<Record<string, unknown>[]> {
+    const authors = (await blogService.listAuthors()) as Array<Record<string, unknown>>;
 
-      if (!title || !slug) {
-        continue;
-      }
-
-      const current = categories.get(slug) ?? {
-        id: slug,
-        title,
-        slug,
-        total_posts: 0,
-      };
-
-      current.total_posts += 1;
-      categories.set(slug, current);
-    }
-
-    return Array.from(categories.values()).sort((left, right) =>
-      left.title.localeCompare(right.title),
-    );
+    return authors
+      .filter((author) => Number(author.published_count ?? 0) > 0)
+      .map((author) => ({
+        id: String(author.id ?? ""),
+        name: normalizeText(author.name),
+        avatar: normalizeText(author.avatar),
+        bio: normalizeText(author.bio),
+        total_posts: Number(author.published_count ?? author.usage_count ?? 0),
+      }))
+      .sort((left, right) => left.name.localeCompare(right.name));
   },
 
   async getBlogBySlug(

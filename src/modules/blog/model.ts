@@ -3,7 +3,7 @@ import { applyDefaultJsonTransform } from "../../utils/mongoose-transform";
 
 export type BlogPublishStatus = "draft" | "published" | "archived";
 export type BlogCategoryPublishStatus = "draft" | "published";
-export type BlogContentBlockType = "text" | "heading" | "image";
+export type BlogContentBlockType = "text" | "heading" | "image" | "quote";
 export type BlogRichTextDocument = Record<string, unknown>;
 
 export interface IBlogContentBlock {
@@ -27,6 +27,7 @@ export interface IBlogPost {
   content_bn: string;
   excerpt_en: string;
   excerpt_bn: string;
+  category_id: string;
   category: string;
   category_slug: string;
   tags: string[];
@@ -35,7 +36,10 @@ export interface IBlogPost {
   seo_title: string;
   seo_description: string;
   slug: string;
+  author_id: string;
   author: string;
+  author_avatar: string;
+  author_bio: string;
   publish_status: BlogPublishStatus;
   published_at: Date | null;
   read_time: string;
@@ -52,11 +56,20 @@ export interface IBlogCategory {
   updatedAt: Date;
 }
 
+export interface IBlogAuthor {
+  name: string;
+  slug: string;
+  avatar: string;
+  bio: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 const blogContentBlockSchema = new Schema<IBlogContentBlock>(
   {
     type: {
       type: String,
-      enum: ["text", "heading", "image"],
+      enum: ["text", "heading", "image", "quote"],
       required: true,
     },
     value_en: { type: String, default: "" },
@@ -81,6 +94,7 @@ const blogSchema = new Schema<IBlogPost>(
     content_bn: { type: String, required: true },
     excerpt_en: { type: String, default: "" },
     excerpt_bn: { type: String, default: "" },
+    category_id: { type: String, default: "", index: true },
     category: { type: String, required: true },
     category_slug: { type: String, required: true, index: true },
     tags: { type: [String], default: [] },
@@ -89,7 +103,10 @@ const blogSchema = new Schema<IBlogPost>(
     seo_title: { type: String, required: true },
     seo_description: { type: String, required: true },
     slug: { type: String, required: true, unique: true, index: true },
+    author_id: { type: String, default: "", index: true },
     author: { type: String, required: true },
+    author_avatar: { type: String, default: "" },
+    author_bio: { type: String, default: "" },
     publish_status: {
       type: String,
       enum: ["draft", "published", "archived"],
@@ -118,11 +135,23 @@ const blogCategorySchema = new Schema<IBlogCategory>(
   { timestamps: true },
 );
 
+const blogAuthorSchema = new Schema<IBlogAuthor>(
+  {
+    name: { type: String, required: true },
+    slug: { type: String, required: true, unique: true, index: true },
+    avatar: { type: String, default: "" },
+    bio: { type: String, default: "" },
+  },
+  { timestamps: true },
+);
+
 applyDefaultJsonTransform(blogSchema);
 applyDefaultJsonTransform(blogCategorySchema);
+applyDefaultJsonTransform(blogAuthorSchema);
 
 type BlogModel = Model<IBlogPost>;
 type BlogCategoryModel = Model<IBlogCategory>;
+type BlogAuthorModelType = Model<IBlogAuthor>;
 
 export const BlogModel =
   (mongoose.models.BlogPost as BlogModel | undefined) ||
@@ -131,3 +160,7 @@ export const BlogModel =
 export const BlogCategoryModel =
   (mongoose.models.BlogCategory as BlogCategoryModel | undefined) ||
   model<IBlogCategory>("BlogCategory", blogCategorySchema);
+
+export const BlogAuthorModel =
+  (mongoose.models.BlogAuthor as BlogAuthorModelType | undefined) ||
+  model<IBlogAuthor>("BlogAuthor", blogAuthorSchema);

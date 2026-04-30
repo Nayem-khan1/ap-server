@@ -49,6 +49,17 @@ export const blogController = {
     });
   }),
 
+  deleteBlog: catchAsync(async (req: Request, res: Response) => {
+    const data = await blogService.deleteBlog(req.params.id);
+    return sendResponse({
+      res,
+      statusCode: StatusCodes.OK,
+      success: true,
+      message: "Blog post deleted successfully",
+      data,
+    });
+  }),
+
   setPublishStatus: catchAsync(async (req: Request, res: Response) => {
     const data = await blogService.setPublishStatus(req.params.id, req.body.publish_status);
     return sendResponse({
@@ -111,6 +122,61 @@ export const blogController = {
       statusCode: StatusCodes.OK,
       success: true,
       message: "Blog categories deleted successfully",
+      data,
+    });
+  }),
+
+  listAuthors: catchAsync(async (_req: Request, res: Response) => {
+    const data = await blogService.listAuthors();
+    return sendResponse({
+      res,
+      statusCode: StatusCodes.OK,
+      success: true,
+      message: "Blog authors fetched successfully",
+      data,
+    });
+  }),
+
+  createAuthor: catchAsync(async (req: Request, res: Response) => {
+    const data = await blogService.createAuthor(req.body);
+    return sendResponse({
+      res,
+      statusCode: StatusCodes.CREATED,
+      success: true,
+      message: "Blog author created successfully",
+      data,
+    });
+  }),
+
+  updateAuthor: catchAsync(async (req: Request, res: Response) => {
+    const data = await blogService.updateAuthor(req.params.id, req.body);
+    return sendResponse({
+      res,
+      statusCode: StatusCodes.OK,
+      success: true,
+      message: "Blog author updated successfully",
+      data,
+    });
+  }),
+
+  deleteAuthor: catchAsync(async (req: Request, res: Response) => {
+    const data = await blogService.deleteAuthor(req.params.id);
+    return sendResponse({
+      res,
+      statusCode: StatusCodes.OK,
+      success: true,
+      message: "Blog author deleted successfully",
+      data,
+    });
+  }),
+
+  bulkDeleteAuthors: catchAsync(async (req: Request, res: Response) => {
+    const data = await blogService.bulkDeleteAuthors(req.body.ids);
+    return sendResponse({
+      res,
+      statusCode: StatusCodes.OK,
+      success: true,
+      message: "Blog authors deleted successfully",
       data,
     });
   }),

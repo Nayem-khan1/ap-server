@@ -69,6 +69,18 @@ export const publicController = {
     });
   }),
 
+  listAuthors: catchAsync(async (_req: Request, res: Response) => {
+    const data = await publicService.listAuthors();
+
+    return sendResponse({
+      res,
+      statusCode: StatusCodes.OK,
+      success: true,
+      message: "Blog authors fetched successfully",
+      data,
+    });
+  }),
+
   getBlogBySlug: catchAsync(async (req: Request, res: Response) => {
     const data = await publicService.getBlogBySlug(req.params.slug, extractLang(req));
 
