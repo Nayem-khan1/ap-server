@@ -57,6 +57,18 @@ export const publicController = {
     });
   }),
 
+  listBlogCategories: catchAsync(async (_req: Request, res: Response) => {
+    const data = await publicService.listBlogCategories();
+
+    return sendResponse({
+      res,
+      statusCode: StatusCodes.OK,
+      success: true,
+      message: "Blog categories fetched successfully",
+      data,
+    });
+  }),
+
   getBlogBySlug: catchAsync(async (req: Request, res: Response) => {
     const data = await publicService.getBlogBySlug(req.params.slug, extractLang(req));
 

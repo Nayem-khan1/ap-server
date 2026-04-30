@@ -13,6 +13,7 @@ import { UserModel } from "../user/model";
 import { IssuedCertificateModel } from "../certificate/model";
 import { certificateService } from "../certificate/service";
 import {
+  ListBlogCategoriesQuery,
   ListBlogsQuery,
   ListCourseCategoriesQuery,
   ListCoursesQuery,
@@ -108,11 +109,129 @@ function localizeCourseCategory(
   };
 }
 
+function normalizeText(value: unknown): string {
+  if (typeof value !== "string") return "";
+  return value.replace(/\r\n/g, "\n").trim();
+}
+
+function slugify(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-{2,}/g, "-");
+}
+
+function buildExcerpt(value: string, maxLength = 180): string {
+  const plain = value.replace(/\s+/g, " ").trim();
+  if (!plain) return "";
+  if (plain.length <= maxLength) return plain;
+  return `${plain.slice(0, maxLength).replace(/\s+\S*$/, "").trimEnd()}...`;
+}
+
+function localizeBlogBlocks(
+  blog: Record<string, unknown>,
+  lang: Language,
+): Array<Record<string, unknown>> {
+  const rawBlocks = Array.isArray(blog.content_blocks) ? blog.content_blocks : [];
+
+  if (rawBlocks.length > 0) {
+    const localizedBlocks: Array<Record<string, unknown>> = [];
+
+    rawBlocks.forEach((item) => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) {
+        return;
+      }
+
+      const block = item as Record<string, unknown>;
+      const type = String(block.type ?? "");
+
+      if (type === "image") {
+        const url = normalizeText(block.url);
+        if (!url) return;
+
+        localizedBlocks.push({
+          type: "image",
+          url,
+          caption: normalizeText(lang === "bn" ? block.caption_bn : block.caption_en),
+        });
+        return;
+      }
+
+      if (type === "heading" || type === "text") {
+        const value = normalizeText(lang === "bn" ? block.value_bn : block.value_en);
+        if (!value) return;
+
+        const localizedBlock: Record<string, unknown> = {
+          type,
+          value,
+        };
+
+        if (type === "heading") {
+          localizedBlock.level = Math.min(3, Math.max(1, Number(block.level ?? 2) || 2));
+        }
+
+        if (type === "text") {
+          const richText = lang === "bn" ? block.rich_text_bn : block.rich_text_en;
+          if (richText && typeof richText === "object" && !Array.isArray(richText)) {
+            localizedBlock.rich_text = richText;
+          }
+        }
+
+        localizedBlocks.push(localizedBlock);
+      }
+    });
+
+    return localizedBlocks;
+  }
+
+  const legacyContent = normalizeText(lang === "bn" ? blog.content_bn : blog.content_en);
+  if (!legacyContent) {
+    return [];
+  }
+
+  return legacyContent
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean)
+    .map((paragraph) => ({
+      type: "text",
+      value: paragraph,
+    }));
+}
+
+function blocksToText(blocks: Array<Record<string, unknown>>): string {
+  return blocks
+    .map((block) =>
+      block.type === "image"
+        ? normalizeText(block.caption)
+        : normalizeText(block.value),
+    )
+    .filter(Boolean)
+    .join("\n\n");
+}
+
 function localizeBlog(blog: Record<string, unknown>, lang: Language) {
+  const contentBlocks = localizeBlogBlocks(blog, lang);
+  const content = blocksToText(contentBlocks);
+  const category = normalizeText(blog.category);
+  const thumbnail = normalizeText(blog.thumbnail ?? blog.featured_image);
+
   return {
     ...blog,
     title: lang === "bn" ? blog.title_bn : blog.title_en,
-    content: lang === "bn" ? blog.content_bn : blog.content_en,
+    content_blocks: contentBlocks,
+    content,
+    excerpt:
+      normalizeText(lang === "bn" ? blog.excerpt_bn : blog.excerpt_en) ||
+      buildExcerpt(content),
+    category,
+    category_slug: normalizeText(blog.category_slug) || slugify(category),
+    thumbnail,
+    featured_image: thumbnail,
+    published_at: blog.published_at ?? blog.updated_at ?? blog.created_at,
+    read_time: normalizeText(blog.read_time) || "1 min read",
   };
 }
 
@@ -397,7 +516,10 @@ export const publicService = {
     };
 
     if (query.category) {
-      filter.category = query.category;
+      filter.$or = [
+        { category: query.category },
+        { category_slug: query.category },
+      ];
     }
 
     if (query.tag) {
@@ -405,7 +527,10 @@ export const publicService = {
     }
 
     const [blogs, total] = await Promise.all([
-      BlogModel.find(filter).sort({ updatedAt: -1 }).skip(skip).limit(page_size),
+      BlogModel.find(filter)
+        .sort({ published_at: -1, updatedAt: -1 })
+        .skip(skip)
+        .limit(page_size),
       BlogModel.countDocuments(filter),
     ]);
 
@@ -417,6 +542,41 @@ export const publicService = {
       items,
       pagination: getPaginationMeta(page, page_size, total),
     };
+  },
+
+  async listBlogCategories(): Promise<Record<string, unknown>[]> {
+    const blogs = await BlogModel.find({
+      publish_status: "published",
+    }).select("category category_slug");
+
+    const categories = new Map<
+      string,
+      { id: string; title: string; slug: string; total_posts: number }
+    >();
+
+    for (const item of blogs) {
+      const data = item.toJSON() as Record<string, unknown>;
+      const title = normalizeText(data.category);
+      const slug = normalizeText(data.category_slug) || slugify(title);
+
+      if (!title || !slug) {
+        continue;
+      }
+
+      const current = categories.get(slug) ?? {
+        id: slug,
+        title,
+        slug,
+        total_posts: 0,
+      };
+
+      current.total_posts += 1;
+      categories.set(slug, current);
+    }
+
+    return Array.from(categories.values()).sort((left, right) =>
+      left.title.localeCompare(right.title),
+    );
   },
 
   async getBlogBySlug(
@@ -553,5 +713,3 @@ export const publicService = {
     return certificateService.verifyByCertificateNo(certificateNo);
   },
 };
-
-

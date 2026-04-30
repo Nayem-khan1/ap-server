@@ -36,6 +36,12 @@ router.get(
 );
 
 router.get(
+  "/blogs/categories",
+  validateRequest(publicValidation.listBlogCategories),
+  publicController.listBlogCategories,
+);
+
+router.get(
   "/blogs/:slug",
   validateRequest(publicValidation.getBlogBySlug),
   publicController.getBlogBySlug,

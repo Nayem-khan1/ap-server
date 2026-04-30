@@ -16,6 +16,17 @@ export const blogController = {
     });
   }),
 
+  getBlogById: catchAsync(async (req: Request, res: Response) => {
+    const data = await blogService.getBlogById(req.params.id);
+    return sendResponse({
+      res,
+      statusCode: StatusCodes.OK,
+      success: true,
+      message: "Blog post fetched successfully",
+      data,
+    });
+  }),
+
   createBlog: catchAsync(async (req: Request, res: Response) => {
     const data = await blogService.createBlog(req.body);
     return sendResponse({
@@ -59,5 +70,48 @@ export const blogController = {
       data,
     });
   }),
-};
 
+  listCategories: catchAsync(async (_req: Request, res: Response) => {
+    const data = await blogService.listCategories();
+    return sendResponse({
+      res,
+      statusCode: StatusCodes.OK,
+      success: true,
+      message: "Blog categories fetched successfully",
+      data,
+    });
+  }),
+
+  createCategory: catchAsync(async (req: Request, res: Response) => {
+    const data = await blogService.createCategory(req.body);
+    return sendResponse({
+      res,
+      statusCode: StatusCodes.CREATED,
+      success: true,
+      message: "Blog category created successfully",
+      data,
+    });
+  }),
+
+  updateCategory: catchAsync(async (req: Request, res: Response) => {
+    const data = await blogService.updateCategory(req.params.id, req.body);
+    return sendResponse({
+      res,
+      statusCode: StatusCodes.OK,
+      success: true,
+      message: "Blog category updated successfully",
+      data,
+    });
+  }),
+
+  bulkDeleteCategories: catchAsync(async (req: Request, res: Response) => {
+    const data = await blogService.bulkDeleteCategories(req.body.ids);
+    return sendResponse({
+      res,
+      statusCode: StatusCodes.OK,
+      success: true,
+      message: "Blog categories deleted successfully",
+      data,
+    });
+  }),
+};

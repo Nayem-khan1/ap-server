@@ -54,6 +54,8 @@ const listBlogsQuerySchema = paginationQuerySchema.extend({
   lang: languageSchema,
 });
 
+const listBlogCategoriesQuerySchema = z.object({});
+
 const listCourseCategoriesQuerySchema = z.object({
   lang: languageSchema,
 });
@@ -90,6 +92,9 @@ export const publicValidation = {
   listBlogs: {
     query: listBlogsQuerySchema,
   },
+  listBlogCategories: {
+    query: listBlogCategoriesQuerySchema,
+  },
   getBlogBySlug: {
     params: slugParamSchema,
     query: z.object({ lang: languageSchema }),
@@ -115,8 +120,8 @@ export const publicValidation = {
 export type ListCoursesQuery = z.infer<typeof listCoursesQuerySchema>;
 export type ListCourseCategoriesQuery = z.infer<typeof listCourseCategoriesQuerySchema>;
 export type ListBlogsQuery = z.infer<typeof listBlogsQuerySchema>;
+export type ListBlogCategoriesQuery = z.infer<typeof listBlogCategoriesQuerySchema>;
 export type ListEventsQuery = z.infer<typeof listEventsQuerySchema>;
 export type ListInstructorsQuery = z.infer<typeof listInstructorsQuerySchema>;
 export type ListTestimonialsQuery = z.infer<typeof listTestimonialsQuerySchema>;
-
 

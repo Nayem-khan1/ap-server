@@ -1,4 +1,6 @@
-﻿import { connectDatabase } from "../src/config/database";
+﻿import { readFileSync } from "fs";
+import { resolve } from "path";
+import { connectDatabase } from "../src/config/database";
 import { logger } from "../src/config/logger";
 import { UserModel } from "../src/modules/user/model";
 import {
@@ -16,7 +18,8 @@ import {
   PaymentTransactionLogModel,
 } from "../src/modules/payment/model";
 import { CouponModel } from "../src/modules/coupon/model";
-import { BlogModel } from "../src/modules/blog/model";
+import { BlogCategoryModel, BlogModel } from "../src/modules/blog/model";
+import { blogService } from "../src/modules/blog/service";
 import { EventModel, EventRegistrationModel } from "../src/modules/event/model";
 import {
   CertificateEligibilityModel,
@@ -28,6 +31,11 @@ import {
   StudentActivityModel,
   StudentLessonProgressModel,
 } from "../src/modules/student/model";
+import {
+  thunderbitBlogSeedTranslations,
+  type ThunderbitBlogSeedTranslation,
+  type ThunderbitTranslationBlock,
+} from "./blog-seed-data";
 
 type SeedContentDefinition = {
   type: "video" | "pdf" | "quiz" | "assignment" | "resource";
@@ -228,6 +236,321 @@ function enrichModules(modules: SeedModuleDefinition[]): SeedModuleDefinition[] 
   }));
 }
 
+type ParsedThunderbitTextBlock = {
+  type: "text";
+  value_bn: string;
+};
+
+type ParsedThunderbitHeadingBlock = {
+  type: "heading";
+  value_bn: string;
+  level: number;
+};
+
+type ParsedThunderbitImageBlock = {
+  type: "image";
+  url: string;
+  caption_bn: string;
+};
+
+type ParsedThunderbitBlock =
+  | ParsedThunderbitTextBlock
+  | ParsedThunderbitHeadingBlock
+  | ParsedThunderbitImageBlock;
+
+function parseThunderbitPublishedAt(value: string): Date | undefined {
+  const [month, day, year] = value
+    .split("/")
+    .map((part) => Number(part.trim()));
+
+  if (!month || !day || !year) {
+    return undefined;
+  }
+
+  const fullYear = year >= 100 ? year : 2000 + year;
+  const parsedDate = new Date(Date.UTC(fullYear, month - 1, day, 12, 0, 0));
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    return undefined;
+  }
+
+  return parsedDate;
+}
+
+function decodeThunderbitContent(value: unknown): string {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  return value.replace(/\\n/g, "\n").replace(/\r\n/g, "\n").trim();
+}
+
+function cleanThunderbitText(value: string): string {
+  return value
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1")
+    .replace(/\*{1,3}/g, "")
+    .replace(/\n[=-]{3,}\s*$/g, "")
+    .replace(/\s+/g, " ")
+    .replace(/([।!?])(?=[A-Za-z\u0980-\u09FF])/g, "$1 ")
+    .replace(/:\s+/g, ": ")
+    .trim();
+}
+
+function isThunderbitImageSegment(value: string): boolean {
+  return /^!\[\]\(([^)]+)\)$/.test(value.trim());
+}
+
+function extractThunderbitImageUrl(value: string): string {
+  const match = value.trim().match(/^!\[\]\(([^)]+)\)$/);
+  if (!match) {
+    throw new Error(`Invalid Thunderbit image segment: ${value}`);
+  }
+
+  return match[1];
+}
+
+function isThunderbitCaptionSegment(value: string): boolean {
+  return /^\*{3}.+\*{3}$/.test(value.trim());
+}
+
+function isThunderbitHeadingSegment(value: string): boolean {
+  const trimmed = value.trim();
+
+  return (
+    /^\*\*.+\*\*(?:\n[=-]{3,})?$/.test(trimmed) ||
+    /^\*{3}.+\*{3}$/.test(trimmed)
+  );
+}
+
+function extractThunderbitHeadingText(value: string): string {
+  const firstLine = value.trim().split("\n")[0] ?? value.trim();
+  return cleanThunderbitText(firstLine);
+}
+
+function resolveThunderbitHeadingLevel(value: string): number {
+  const trimmed = value.trim();
+
+  if (/^চিত্র[:ঃ]/.test(trimmed) || /^\d+[.।]/.test(trimmed)) {
+    return 3;
+  }
+
+  return 2;
+}
+
+function splitThunderbitNumberedList(value: string): string[] | null {
+  const lines = value
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (lines.length <= 1 || !lines.every((line) => /^\d+\.\s+/.test(line))) {
+    return null;
+  }
+
+  return lines.map((line) =>
+    cleanThunderbitText(line.replace(/^\d+\.\s+/, "")),
+  );
+}
+
+function parseThunderbitBlocks(rawContent: unknown): ParsedThunderbitBlock[] {
+  const segments = decodeThunderbitContent(rawContent)
+    .split(/\n\n+/)
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+
+  const blocks: ParsedThunderbitBlock[] = [];
+
+  for (let index = 0; index < segments.length; index += 1) {
+    const segment = segments[index];
+
+    if (isThunderbitImageSegment(segment)) {
+      const url = extractThunderbitImageUrl(segment);
+      let caption_bn = "";
+
+      if (segments[index + 1] && isThunderbitCaptionSegment(segments[index + 1])) {
+        caption_bn = cleanThunderbitText(segments[index + 1]);
+        index += 1;
+      }
+
+      blocks.push({
+        type: "image",
+        url,
+        caption_bn,
+      });
+      continue;
+    }
+
+    if (isThunderbitHeadingSegment(segment)) {
+      const value_bn = extractThunderbitHeadingText(segment);
+
+      if (value_bn) {
+        blocks.push({
+          type: "heading",
+          value_bn,
+          level: resolveThunderbitHeadingLevel(value_bn),
+        });
+      }
+      continue;
+    }
+
+    const listItems = splitThunderbitNumberedList(segment);
+    if (listItems) {
+      listItems.forEach((item) => {
+        if (!item) {
+          return;
+        }
+
+        blocks.push({
+          type: "text",
+          value_bn: item,
+        });
+      });
+      continue;
+    }
+
+    const value_bn = cleanThunderbitText(segment);
+    if (!value_bn) {
+      continue;
+    }
+
+    blocks.push({
+      type: "text",
+      value_bn,
+    });
+  }
+
+  return blocks;
+}
+
+function loadThunderbitSourceArticle(fileName: string) {
+  const filePath = resolve(process.cwd(), "..", fileName);
+  const rawJson = readFileSync(filePath, "utf8").replace(/^\uFEFF/, "");
+  const [record] = JSON.parse(rawJson) as Array<Record<string, unknown>>;
+
+  if (!record) {
+    throw new Error(`Thunderbit source file is empty: ${fileName}`);
+  }
+
+  const blocks = parseThunderbitBlocks(record["আর্টিকেল কন্টেন্ট"]);
+  const firstImage =
+    blocks.find(
+      (block): block is ParsedThunderbitImageBlock => block.type === "image",
+    )?.url ?? "";
+
+  return {
+    title_bn: String(record["আর্টিকেল টাইটেল"] ?? "").trim(),
+    author: String(record["লেখক"] ?? "").trim() || "Editorial Team",
+    published_at: parseThunderbitPublishedAt(
+      String(record["প্রকাশনার তারিখ"] ?? "").trim(),
+    ),
+    category_bn: String(record["ক্যাটাগরি"] ?? "").trim(),
+    blocks,
+    thumbnail: firstImage,
+  };
+}
+
+function buildBilingualThunderbitBlocks(
+  sourceBlocks: ParsedThunderbitBlock[],
+  translationBlocks: ThunderbitTranslationBlock[],
+): Array<Record<string, unknown>> {
+  if (sourceBlocks.length !== translationBlocks.length) {
+    throw new Error(
+      `Thunderbit block count mismatch: source=${sourceBlocks.length}, translation=${translationBlocks.length}`,
+    );
+  }
+
+  return sourceBlocks.map((sourceBlock, index) => {
+    const translationBlock = translationBlocks[index];
+
+    if (sourceBlock.type !== translationBlock.type) {
+      throw new Error(
+        `Thunderbit block type mismatch at index ${index}: source=${sourceBlock.type}, translation=${translationBlock.type}`,
+      );
+    }
+
+    if (sourceBlock.type === "image") {
+      const imageUrl =
+        translationBlock.type === "image" ? translationBlock.url.trim() : "";
+
+      if (!imageUrl) {
+        throw new Error(`Missing dummy image URL for Thunderbit image block ${index}`);
+      }
+
+      return {
+        type: "image",
+        url: imageUrl,
+        caption_en:
+          translationBlock.type === "image"
+            ? translationBlock.caption_en ?? ""
+            : "",
+        caption_bn: sourceBlock.caption_bn,
+      };
+    }
+
+    if (sourceBlock.type === "heading") {
+      return {
+        type: "heading",
+        value_en:
+          translationBlock.type === "heading"
+            ? translationBlock.value_en.trim()
+            : "",
+        value_bn: sourceBlock.value_bn,
+        level:
+          translationBlock.type === "heading"
+            ? translationBlock.level ?? sourceBlock.level
+            : sourceBlock.level,
+      };
+    }
+
+    return {
+      type: "text",
+      value_en:
+        translationBlock.type === "text" ? translationBlock.value_en.trim() : "",
+      value_bn: sourceBlock.value_bn,
+    };
+  });
+}
+
+function resolveSeedThumbnail(blocks: Array<Record<string, unknown>>): string {
+  for (const block of blocks) {
+    if (block.type === "image" && typeof block.url === "string" && block.url.trim()) {
+      return block.url;
+    }
+  }
+
+  return "";
+}
+
+function buildThunderbitBlogSeedPayload(
+  definition: ThunderbitBlogSeedTranslation,
+): Record<string, unknown> {
+  const sourceArticle = loadThunderbitSourceArticle(definition.fileName);
+
+  if (!sourceArticle.title_bn) {
+    throw new Error(`Missing Bangla title in Thunderbit file: ${definition.fileName}`);
+  }
+
+  const contentBlocks = buildBilingualThunderbitBlocks(
+    sourceArticle.blocks,
+    definition.blocks,
+  );
+  const thumbnail = resolveSeedThumbnail(contentBlocks);
+
+  return {
+    title_en: definition.title_en,
+    title_bn: sourceArticle.title_bn,
+    content_blocks: contentBlocks,
+    category: definition.category || sourceArticle.category_bn,
+    tags: definition.tags,
+    thumbnail,
+    seo_title: definition.title_en,
+    slug: definition.slug,
+    author: sourceArticle.author,
+    publish_status: "published",
+    published_at: sourceArticle.published_at,
+  };
+}
+
 async function runSeed() {
   await connectDatabase();
 
@@ -244,6 +567,7 @@ async function runSeed() {
     PaymentTransactionLogModel.deleteMany({}),
     CouponModel.deleteMany({}),
     BlogModel.deleteMany({}),
+    BlogCategoryModel.deleteMany({}),
     EventModel.deleteMany({}),
     EventRegistrationModel.deleteMany({}),
     CertificateEligibilityModel.deleteMany({}),
@@ -1377,58 +1701,9 @@ async function runSeed() {
     is_active: true,
   });
 
-  await BlogModel.insertMany([
-    {
-      title_en: "How to Start Stargazing in 2026",
-      title_bn: "২০২৬ সালে স্টারগেজিং শুরু করবেন কীভাবে",
-      content_en:
-        "A practical guide for beginners to start stargazing with minimal equipment and clear routines.",
-      content_bn:
-        "কম যন্ত্রপাতি দিয়ে নিয়মিত স্টারগেজিং শুরু করার একটি বাস্তবধর্মী গাইড।",
-      category: "Astronomy Tips",
-      tags: ["astronomy", "beginner"],
-      featured_image: "",
-      seo_title: "How to Start Stargazing",
-      seo_description: "Beginner-friendly stargazing guide.",
-      slug: "how-to-start-stargazing",
-      author: instructors[1].name,
-      publish_status: "published",
-    },
-    {
-      title_en: "Top 5 Olympiad Astronomy Mistakes",
-      title_bn: "অলিম্পিয়াড অ্যাস্ট্রোনমিতে ৫টি সাধারণ ভুল",
-      content_en:
-        "Common preparation mistakes and how to avoid them while training for olympiad astronomy.",
-      content_bn:
-        "অলিম্পিয়াড প্রস্তুতিতে প্রচলিত ভুল এবং সেগুলো এড়ানোর কৌশল।",
-      category: "Olympiad Prep",
-      tags: ["olympiad", "strategy"],
-      featured_image: "",
-      seo_title: "Olympiad Astronomy Mistakes",
-      seo_description:
-        "Avoid common mistakes in astronomy olympiad preparation.",
-      slug: "top-5-olympiad-astronomy-mistakes",
-      author: instructors[1].name,
-      publish_status: "published",
-    },
-    {
-      title_en: "Understanding Galaxies in Simple Terms",
-      title_bn: "সহজ ভাষায় গ্যালাক্সি বোঝা",
-      content_en:
-        "A clear explanation of galaxy types, structures, and why galaxies matter in modern astronomy.",
-      content_bn:
-        "গ্যালাক্সির ধরন, গঠন এবং আধুনিক জ্যোতির্বিজ্ঞানে এর গুরুত্ব নিয়ে সহজ আলোচনা।",
-      category: "Astrophysics",
-      tags: ["galaxy", "astrophysics"],
-      featured_image: "",
-      seo_title: "Understanding Galaxies",
-      seo_description:
-        "Simple explanation of galaxies and their role in astronomy.",
-      slug: "understanding-galaxies-in-simple-terms",
-      author: instructors[0].name,
-      publish_status: "published",
-    },
-  ]);
+  for (const definition of thunderbitBlogSeedTranslations) {
+    await blogService.createBlog(buildThunderbitBlogSeedPayload(definition));
+  }
 
   const events = await EventModel.insertMany([
     {
