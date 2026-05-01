@@ -18,6 +18,7 @@ import {
 } from "./auth.validation";
 import { UserModel } from "../user/model";
 import { StudentActivityModel } from "../student/model";
+import { createStudentAccount } from "../user/student-account";
 
 interface LoginResponse {
   access_token: string;
@@ -105,45 +106,6 @@ async function issueTokensForUser(
   return { access_token, refresh_token };
 }
 
-function sanitizeUsername(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
-}
-
-function buildUsernameSeed(name: string, email: string): string {
-  const nameSeed = sanitizeUsername(name);
-  if (nameSeed.length >= 3) {
-    return nameSeed.slice(0, 16);
-  }
-
-  const emailSeed = sanitizeUsername(email.split("@")[0] ?? "");
-  if (emailSeed.length >= 3) {
-    return emailSeed.slice(0, 16);
-  }
-
-  return "student";
-}
-
-async function resolveUniqueUsername(seed: string): Promise<string> {
-  const normalizedSeed = (seed.trim() || "student").slice(0, 16);
-  let suffix = 0;
-
-  while (suffix < 1000) {
-    const suffixPart = suffix === 0 ? "" : String(suffix);
-    const baseLength = Math.max(3, 16 - suffixPart.length);
-    const candidate = `${normalizedSeed.slice(0, baseLength)}${suffixPart}`;
-    const existing = await UserModel.exists({ username: candidate });
-    if (!existing) {
-      return candidate;
-    }
-    suffix += 1;
-  }
-
-  throw new AppError(
-    StatusCodes.INTERNAL_SERVER_ERROR,
-    "Unable to generate username",
-  );
-}
-
 function isBcryptHash(value: string): boolean {
   return /^\$2[aby]\$\d{2}\$/.test(value);
 }
@@ -175,27 +137,12 @@ async function verifyPasswordWithLegacyMigration(
 
 export const authService = {
   async registerStudent(payload: StudentRegisterBody): Promise<LoginResponse> {
-    const normalizedEmail = payload.email.toLowerCase().trim();
-
-    const existingEmail = await UserModel.exists({ email: normalizedEmail });
-    if (existingEmail) {
-      throw new AppError(StatusCodes.CONFLICT, "Email already registered");
-    }
-
-    const usernameSeed = buildUsernameSeed(payload.name, normalizedEmail);
-    const username = await resolveUniqueUsername(usernameSeed);
-
-    const user = await UserModel.create({
-      name: payload.name.trim(),
-      email: normalizedEmail,
-      username,
+    const user = await createStudentAccount({
+      name: payload.name,
+      email: payload.email,
       password: payload.password,
-      role: "student",
+      phone: payload.phone,
       status: "active",
-      phone: payload.phone?.trim() ?? "",
-      enrolled_courses_count: 0,
-      publish_status: "published",
-      isVerified: true,
     });
 
     const { access_token, refresh_token } = await issueTokensForUser(user);

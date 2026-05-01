@@ -8,6 +8,7 @@ import {
 import { CourseCategoryModel, CourseModel, CourseModuleModel } from "../course/model";
 import { BlogModel } from "../blog/model";
 import { blogService } from "../blog/service";
+import { resolveEnrollmentPricing } from "../enrollment/workflow";
 import { EventModel } from "../event/model";
 import { LessonContentModel, LessonModel } from "../lesson/model";
 import { UserModel } from "../user/model";
@@ -558,6 +559,29 @@ export const publicService = {
         Number(courseJson.total_lessons ?? 0),
       instructors: orderedInstructors,
       curriculum,
+    };
+  },
+
+  async previewCoursePricing(
+    courseId: string,
+    payload: { coupon_code?: string },
+  ): Promise<Record<string, unknown>> {
+    const pricingResolution = await resolveEnrollmentPricing({
+      course_id: courseId,
+      coupon_code: payload.coupon_code,
+      require_published_course: true,
+    });
+
+    return {
+      course: {
+        id: pricingResolution.course.id,
+        title_en: pricingResolution.course.title_en,
+        title_bn: pricingResolution.course.title_bn,
+        is_free: pricingResolution.course.is_free,
+        price: pricingResolution.course.price,
+        discount_price: pricingResolution.course.discount_price,
+      },
+      pricing: pricingResolution.pricing,
     };
   },
 

@@ -8,6 +8,11 @@ const usersRouter = Router();
 
 usersRouter.get("/", validateRequest(userValidation.listUsers), userController.listUsers);
 usersRouter.get("/students", validateRequest(userValidation.listUsers), userController.listStudents);
+usersRouter.post(
+  "/students",
+  validateRequest(userValidation.createStudent),
+  userController.createStudent,
+);
 usersRouter.get(
   "/students/:id",
   validateObjectId("id"),

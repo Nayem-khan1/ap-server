@@ -7,6 +7,11 @@ import { enrollmentValidation } from "./schema";
 const enrollmentRouter = Router();
 enrollmentRouter.get("/", enrollmentController.listEnrollments);
 enrollmentRouter.post(
+  "/manual/preview",
+  validateRequest(enrollmentValidation.manualPreview),
+  enrollmentController.previewManualEnrollment,
+);
+enrollmentRouter.post(
   "/manual",
   validateRequest(enrollmentValidation.manualEnroll),
   enrollmentController.manualEnroll,
@@ -35,4 +40,3 @@ const progressRouter = Router();
 progressRouter.get("/", enrollmentController.listProgress);
 
 export { enrollmentRouter, progressRouter };
-

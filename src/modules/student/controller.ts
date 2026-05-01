@@ -134,7 +134,11 @@ export const studentController = {
 
   enrollInCourse: catchAsync(async (req: Request, res: Response) => {
     const studentId = resolveStudentId(req);
-    const data = await studentService.enrollInCourse(studentId, req.params.courseId);
+    const data = await studentService.enrollInCourse(
+      studentId,
+      req.params.courseId,
+      req.body,
+    );
     return sendResponse({
       res,
       statusCode: StatusCodes.OK,

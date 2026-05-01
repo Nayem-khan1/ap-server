@@ -22,7 +22,14 @@ export const bulkDeleteSchema = z.object({
 export const bkashInitSchema = z.object({
   student_id: z.string().min(1),
   course_id: z.string().min(1),
-  amount: z.coerce.number().min(0),
+  amount: z.coerce.number().min(0).optional(),
+  coupon_code: z
+    .string()
+    .trim()
+    .min(3)
+    .max(32)
+    .regex(/^[a-zA-Z0-9_-]+$/)
+    .optional(),
 });
 
 export const bkashCallbackBodySchema = z.object({

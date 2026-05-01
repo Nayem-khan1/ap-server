@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { validateObjectId } from "../../middlewares/validate-object-id.middleware";
 import { validateRequest } from "../../middlewares/validate-request.middleware";
 import { publicController } from "./public.controller";
 import { publicValidation } from "./public.validation";
@@ -27,6 +28,13 @@ router.get(
   "/courses/:slug",
   validateRequest(publicValidation.getCourseBySlug),
   publicController.getCourseBySlug,
+);
+
+router.post(
+  "/courses/:courseId/pricing",
+  validateObjectId("courseId"),
+  validateRequest(publicValidation.previewCoursePricing),
+  publicController.previewCoursePricing,
 );
 
 router.get(

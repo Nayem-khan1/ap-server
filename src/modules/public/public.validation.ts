@@ -75,6 +75,21 @@ const slugParamSchema = z.object({
   slug: z.string().trim().min(1),
 });
 
+const courseIdParamSchema = z.object({
+  courseId: z.string().trim().min(1),
+});
+
+const couponCodeSchema = z
+  .string()
+  .trim()
+  .min(3)
+  .max(32)
+  .regex(/^[a-zA-Z0-9_-]+$/);
+
+const coursePricingPreviewBodySchema = z.object({
+  coupon_code: couponCodeSchema.optional(),
+});
+
 const certificateVerifyQuerySchema = z.object({
   certificate_no: z.string().trim().min(4),
 });
@@ -86,6 +101,10 @@ export const publicValidation = {
   getCourseBySlug: {
     params: slugParamSchema,
     query: z.object({ lang: languageSchema }),
+  },
+  previewCoursePricing: {
+    params: courseIdParamSchema,
+    body: coursePricingPreviewBodySchema,
   },
   listCourseCategories: {
     query: listCourseCategoriesQuerySchema,

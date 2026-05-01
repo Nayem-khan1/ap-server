@@ -8,7 +8,14 @@ export interface IEnrollment {
   course_name: string;
   enrolled_at: string;
   enrollment_type: "auto" | "manual";
-  payment_status: "paid" | "free" | "pending";
+  payment_status: "paid" | "free" | "pending" | "failed";
+  original_amount: number;
+  course_discount_amount: number;
+  coupon_id?: string;
+  coupon_code?: string;
+  coupon_discount_amount: number;
+  manual_discount_amount: number;
+  final_amount: number;
   progress_percent: number;
   completed_lessons: string[];
   completed_at: string | null;
@@ -41,7 +48,18 @@ const enrollmentSchema = new Schema<IEnrollment>(
     course_name: { type: String, required: true },
     enrolled_at: { type: String, required: true },
     enrollment_type: { type: String, enum: ["auto", "manual"], required: true },
-    payment_status: { type: String, enum: ["paid", "free", "pending"], required: true },
+    payment_status: {
+      type: String,
+      enum: ["paid", "free", "pending", "failed"],
+      required: true,
+    },
+    original_amount: { type: Number, default: 0, min: 0 },
+    course_discount_amount: { type: Number, default: 0, min: 0 },
+    coupon_id: { type: String, default: undefined, index: true },
+    coupon_code: { type: String, default: undefined },
+    coupon_discount_amount: { type: Number, default: 0, min: 0 },
+    manual_discount_amount: { type: Number, default: 0, min: 0 },
+    final_amount: { type: Number, default: 0, min: 0 },
     progress_percent: { type: Number, min: 0, max: 100, default: 0 },
     completed_lessons: { type: [String], default: [] },
     completed_at: { type: String, default: null },
@@ -86,4 +104,3 @@ export const EnrollmentModel =
 export const ProgressModel =
   (mongoose.models.Progress as ProgressModel | undefined) ||
   model<IProgress>("Progress", progressSchema);
-

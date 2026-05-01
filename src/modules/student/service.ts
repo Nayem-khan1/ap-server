@@ -7,9 +7,15 @@ import {
 import { certificateService } from "../certificate/service";
 import { CourseModel, CourseModuleModel } from "../course/model";
 import { EnrollmentModel, ProgressModel } from "../enrollment/model";
+import {
+  completeEnrollmentWithoutGateway,
+  resolveEnrollmentPricing,
+  syncEnrolledCourseCount,
+} from "../enrollment/workflow";
 import { LessonContentModel, LessonModel } from "../lesson/model";
 import { normalizeLessonContentDocument } from "../lesson/content-normalizer";
 import { PaymentModel } from "../payment/model";
+import { buildStudentPaymentFilter } from "../payment/payment-filters";
 import { paymentService } from "../payment/service";
 import { UserModel } from "../user/model";
 import {
@@ -147,22 +153,6 @@ function resolveLocalizedCourseSubtitle(
   return lang === "bn" ? course.subtitle_bn : course.subtitle_en;
 }
 
-function resolvePayableAmount(input: {
-  is_free: boolean;
-  price: number;
-  discount_price: number;
-}): number {
-  if (input.is_free) {
-    return 0;
-  }
-
-  if (input.discount_price > 0 && input.discount_price < input.price) {
-    return input.discount_price;
-  }
-
-  return input.price;
-}
-
 function clampPercent(value: number): number {
   return Math.max(0, Math.min(100, Math.round(value)));
 }
@@ -256,22 +246,6 @@ function resolveLearningStep(input: {
 }
 
 function buildStudentCertificateFilter(student: {
-  id?: string | null;
-  name: string;
-}) {
-  const filters: Array<Record<string, unknown>> = [
-    { student_id: { $exists: false }, student_name: student.name },
-    { student_id: null, student_name: student.name },
-  ];
-
-  if (typeof student.id === "string" && student.id.trim()) {
-    filters.unshift({ student_id: student.id });
-  }
-
-  return { $or: filters };
-}
-
-function buildStudentPaymentFilter(student: {
   id?: string | null;
   name: string;
 }) {
@@ -416,16 +390,6 @@ async function ensureStudent(userId: string) {
 }
 
 type StudentEntity = Awaited<ReturnType<typeof ensureStudent>>;
-
-async function syncEnrolledCourseCount(studentId: string): Promise<void> {
-  const enrolledCoursesCount = await EnrollmentModel.countDocuments({
-    student_id: studentId,
-  });
-
-  await UserModel.findByIdAndUpdate(studentId, {
-    enrolled_courses_count: enrolledCoursesCount,
-  });
-}
 
 async function buildStudentProfile(student: StudentEntity) {
   const enrolledCoursesCount = await EnrollmentModel.countDocuments({
@@ -1633,19 +1597,23 @@ export const studentService = {
     };
   },
 
-  async enrollInCourse(userId: string, courseId: string) {
-    const [student, course] = await Promise.all([
+  async enrollInCourse(
+    userId: string,
+    courseId: string,
+    payload?: { coupon_code?: string },
+  ) {
+    const [student, pricingResolution] = await Promise.all([
       ensureStudent(userId),
-      CourseModel.findOne({ _id: courseId, publish_status: "published" }),
+      resolveEnrollmentPricing({
+        course_id: courseId,
+        coupon_code: payload?.coupon_code,
+        require_published_course: true,
+      }),
     ]);
-
-    if (!course) {
-      throw new AppError(StatusCodes.NOT_FOUND, "Published course not found");
-    }
 
     const existingEnrollment = await EnrollmentModel.findOne({
       student_id: student.id,
-      course_id: course.id,
+      course_id: pricingResolution.course.id,
     });
 
     if (
@@ -1658,58 +1626,42 @@ export const studentService = {
         payment_required: false,
         already_enrolled: true,
         enrollment: existingEnrollment.toJSON(),
+        pricing: pricingResolution.pricing,
       };
     }
 
-    if (course.is_free) {
-      const enrollment = await EnrollmentModel.findOneAndUpdate(
-        {
-          student_id: student.id,
-          course_id: course.id,
+    if (pricingResolution.pricing.final_amount <= 0) {
+      const result = await completeEnrollmentWithoutGateway({
+        student: {
+          id: student.id,
+          name: student.name,
         },
-        {
-          student_id: student.id,
-          student_name: student.name,
-          course_id: course.id,
-          course_name: course.title_en,
-          enrolled_at: new Date().toISOString(),
-          enrollment_type: "auto",
-          payment_status: "free",
-          progress_percent: existingEnrollment?.progress_percent ?? 0,
-          completed_lessons: existingEnrollment?.completed_lessons ?? [],
-          completed_at: existingEnrollment?.completed_at ?? null,
-          status: "active",
-          access_status: "active",
+        course: {
+          id: pricingResolution.course.id,
+          title_en: pricingResolution.course.title_en,
         },
-        { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true },
-      );
+        enrollment_type: "auto",
+        pricing: pricingResolution.pricing,
+        source: "auto_free_enrollment",
+        manually_verified_by: "System Auto Enrollment",
+      });
 
       await syncEnrolledCourseCount(student.id);
 
       return {
         payment_required: false,
         already_enrolled: false,
-        enrollment: enrollment.toJSON(),
+        enrollment: result.enrollment.toJSON(),
+        payment: result.payment.toJSON(),
+        pricing: pricingResolution.pricing,
       };
-    }
-
-    const amount = resolvePayableAmount({
-      is_free: course.is_free,
-      price: course.price,
-      discount_price: course.discount_price,
-    });
-
-    if (amount <= 0) {
-      throw new AppError(
-        StatusCodes.BAD_REQUEST,
-        "Course price must be greater than zero for paid enrollment",
-      );
     }
 
     const payment = await paymentService.initBkashPayment({
       student_id: student.id,
-      course_id: course.id,
-      amount,
+      course_id: pricingResolution.course.id,
+      coupon_code: payload?.coupon_code,
+      pricing_resolution: pricingResolution,
     });
 
     await syncEnrolledCourseCount(student.id);
@@ -1718,6 +1670,7 @@ export const studentService = {
       payment_required: true,
       already_enrolled: false,
       payment,
+      pricing: pricingResolution.pricing,
     };
   },
 

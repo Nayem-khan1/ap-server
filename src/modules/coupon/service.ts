@@ -24,10 +24,27 @@ function normalizeCouponPayload(payload: Record<string, unknown>) {
         ? payload.expiry
         : undefined;
 
+  const minimum_purchase_amount =
+    typeof payload.minimum_purchase_amount === "number"
+      ? payload.minimum_purchase_amount
+      : undefined;
+
+  const course_ids = Array.isArray(payload.course_ids)
+    ? Array.from(
+        new Set(
+          payload.course_ids.filter(
+            (item): item is string => typeof item === "string" && item.trim().length > 0,
+          ),
+        ),
+      )
+    : undefined;
+
   return {
     ...payload,
     discount_value,
     max_redemption,
+    minimum_purchase_amount,
+    course_ids,
     expires_at,
   } as Record<string, unknown>;
 }
@@ -47,6 +64,8 @@ export const couponService = {
     usage_limit?: number;
     expires_at?: string;
     expiry?: string;
+    minimum_purchase_amount?: number;
+    course_ids?: string[];
     is_active: boolean;
   }) {
     const normalized = normalizeCouponPayload(payload);

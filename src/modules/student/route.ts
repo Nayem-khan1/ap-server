@@ -57,7 +57,7 @@ studentRouter.post(
 studentRouter.post(
   "/courses/:courseId/enroll",
   validateObjectId("courseId"),
-  validateRequest(studentValidation.courseIdParam),
+  validateRequest(studentValidation.courseEnrollment),
   studentController.enrollInCourse,
 );
 

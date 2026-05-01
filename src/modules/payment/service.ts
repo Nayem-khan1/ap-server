@@ -8,8 +8,13 @@ import {
   bkashRefundPayment,
 } from "../../utils/bkash";
 import { env } from "../../config/env";
-import { CourseModel } from "../course/model";
-import { EnrollmentModel } from "../enrollment/model";
+import {
+  createPaymentRecord,
+  EnrollmentPricingResolution,
+  resolveEnrollmentPricing,
+  syncEnrollmentFromPayment,
+  upsertEnrollmentRecord,
+} from "../enrollment/workflow";
 import { UserModel } from "../user/model";
 import { PaymentModel, PaymentTransactionLogModel } from "./model";
 
@@ -62,39 +67,6 @@ function resolveCallbackRedirectUrl(
     statusMessage,
     transactionStatus,
   });
-}
-
-async function lockEnrollmentForPayment(payment: any): Promise<void> {
-  if (!payment.enrollment_id) {
-    return;
-  }
-
-  await EnrollmentModel.findByIdAndUpdate(payment.enrollment_id, {
-    payment_status: "pending",
-    status: "paused",
-    access_status: "locked",
-  });
-}
-
-async function unlockEnrollmentForPayment(payment: any) {
-  const enrollmentFilter = payment.enrollment_id
-    ? { _id: payment.enrollment_id }
-    : {
-        student_name: payment.student_name,
-        course_name: payment.course_name,
-      };
-
-  const enrollment = await EnrollmentModel.findOneAndUpdate(
-    enrollmentFilter,
-    {
-      status: "active",
-      access_status: "active",
-      payment_status: payment.status === "verified" ? "paid" : "pending",
-    },
-    { new: true },
-  );
-
-  return enrollment ? enrollment.toJSON() : true;
 }
 
 async function resolveGatewayPayment(input: {
@@ -171,42 +143,7 @@ async function executeGatewayPayment(
     },
   });
 
-  if (verified) {
-    let enrollment = payment.enrollment_id
-      ? await EnrollmentModel.findById(payment.enrollment_id)
-      : null;
-
-    if (!enrollment && payment.student_id && payment.course_id) {
-      enrollment = await EnrollmentModel.findOne({
-        student_id: payment.student_id,
-        course_id: payment.course_id,
-      });
-    }
-
-    if (!enrollment) {
-      enrollment = await EnrollmentModel.create({
-        student_id: payment.student_id ?? "",
-        student_name: payment.student_name,
-        course_id: payment.course_id ?? "",
-        course_name: payment.course_name,
-        enrolled_at: new Date().toISOString(),
-        enrollment_type: "auto",
-        payment_status: "paid",
-        progress_percent: 0,
-        completed_lessons: [],
-        completed_at: null,
-        status: "active",
-        access_status: "active",
-      });
-    } else {
-      enrollment.status = "active";
-      enrollment.access_status = "active";
-      enrollment.payment_status = "paid";
-      await enrollment.save();
-    }
-  } else {
-    await lockEnrollmentForPayment(payment);
-  }
+  await syncEnrollmentFromPayment(payment);
 
   return {
     verified,
@@ -242,6 +179,7 @@ export const paymentService = {
       { new: true },
     );
     if (!payment) throw new AppError(StatusCodes.NOT_FOUND, "Payment not found");
+    await syncEnrollmentFromPayment(payment);
     return payment.toJSON();
   },
 
@@ -259,14 +197,18 @@ export const paymentService = {
       { new: true },
     );
     if (!payment) throw new AppError(StatusCodes.NOT_FOUND, "Payment not found");
+    await syncEnrollmentFromPayment(payment);
     return payment.toJSON();
   },
 
   async unlockEnrollment(id: string) {
     const payment = await PaymentModel.findById(id);
     if (!payment) throw new AppError(StatusCodes.NOT_FOUND, "Payment not found");
-
-    return unlockEnrollmentForPayment(payment);
+    payment.status = "verified";
+    payment.manually_verified_by = payment.manually_verified_by ?? "Admin Unlock";
+    await payment.save();
+    await syncEnrollmentFromPayment(payment);
+    return true;
   },
 
   async bulkDelete(ids: string[]) {
@@ -277,69 +219,71 @@ export const paymentService = {
   async initBkashPayment(payload: {
     student_id: string;
     course_id: string;
-    amount: number;
+    amount?: number;
+    coupon_code?: string;
+    pricing_resolution?: EnrollmentPricingResolution;
   }) {
-    const [student, course] = await Promise.all([
+    const [student, pricingResolution] = await Promise.all([
       UserModel.findById(payload.student_id),
-      CourseModel.findById(payload.course_id),
+      payload.pricing_resolution
+        ? Promise.resolve(payload.pricing_resolution)
+        : resolveEnrollmentPricing({
+            course_id: payload.course_id,
+            coupon_code: payload.coupon_code,
+            require_published_course: false,
+          }),
     ]);
 
     if (!student || student.role !== "student") {
       throw new AppError(StatusCodes.NOT_FOUND, "Student not found");
     }
 
-    if (!course) {
-      throw new AppError(StatusCodes.NOT_FOUND, "Course not found");
-    }
-
-    if (course.is_free) {
+    if (pricingResolution.course.is_free || pricingResolution.pricing.final_amount <= 0) {
       throw new AppError(
         StatusCodes.BAD_REQUEST,
-        "This course is free and does not require bKash payment",
+        "This enrollment does not require bKash payment",
       );
     }
 
-    const enrollment = await EnrollmentModel.findOneAndUpdate(
-      {
-        student_id: payload.student_id,
-        course_id: payload.course_id,
+    const enrollment = await upsertEnrollmentRecord({
+      student: {
+        id: student.id,
+        name: student.name,
       },
-      {
-        student_id: payload.student_id,
-        student_name: student.name,
-        course_id: payload.course_id,
-        course_name: course.title_en,
-        enrolled_at: new Date().toISOString(),
-        enrollment_type: "auto",
-        payment_status: "pending",
-        progress_percent: 0,
-        completed_lessons: [],
-        completed_at: null,
-        status: "paused",
-        access_status: "locked",
+      course: {
+        id: pricingResolution.course.id,
+        title_en: pricingResolution.course.title_en,
       },
-      { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true },
-    );
+      enrollment_type: "auto",
+      payment_status: "pending",
+      pricing: pricingResolution.pricing,
+    });
 
     const invoice = makeInvoiceId(payload.course_id, payload.student_id);
     const initResult = await bkashCreatePayment({
-      amount: payload.amount,
+      amount: pricingResolution.pricing.final_amount,
       invoiceNumber: invoice,
     });
 
-    const payment = await PaymentModel.create({
-      trx_id: invoice,
-      invoice,
-      paymentID: initResult.paymentID,
-      student_id: payload.student_id,
-      student_name: student.name,
-      course_id: payload.course_id,
-      course_name: course.title_en,
-      amount: payload.amount,
+    const payment = await createPaymentRecord({
+      student: {
+        id: student.id,
+        name: student.name,
+      },
+      course: {
+        id: pricingResolution.course.id,
+        title_en: pricingResolution.course.title_en,
+      },
+      enrollment: {
+        id: enrollment.id,
+      },
+      pricing: pricingResolution.pricing,
       gateway: "bKash",
+      source: "public_checkout",
       status: "pending",
-      submitted_at: new Date().toISOString(),
-      enrollment_id: enrollment.id,
+      invoice,
+      trx_id: invoice,
+      paymentID: initResult.paymentID,
     });
 
     await PaymentTransactionLogModel.create({
@@ -397,7 +341,7 @@ export const paymentService = {
 
       payment.status = "failed";
       await payment.save();
-      await lockEnrollmentForPayment(payment);
+      await syncEnrollmentFromPayment(payment);
 
       await PaymentTransactionLogModel.create({
         payment_id: payment.id,
@@ -515,7 +459,7 @@ export const paymentService = {
       payment.status = "failed";
       payment.manually_verified_by = "bKash Refund";
       await payment.save();
-      await lockEnrollmentForPayment(payment);
+      await syncEnrollmentFromPayment(payment);
     }
 
     return {

@@ -12,6 +12,8 @@ import {
 } from "./schema";
 import { EnrollmentModel, ProgressModel } from "../enrollment/model";
 import { PaymentModel } from "../payment/model";
+import { buildStudentPaymentFilter } from "../payment/payment-filters";
+import { createStudentAccount } from "./student-account";
 
 const ADMIN_ROLES = ["super_admin", "admin", "instructor"] as const;
 
@@ -67,7 +69,9 @@ export const userService = {
   async getStudentPayments(studentId: string) {
     const student = await UserModel.findOne({ _id: studentId, role: "student" });
     if (!student) return [];
-    const items = await PaymentModel.find({ student_name: student.name }).sort({
+    const items = await PaymentModel.find(
+      buildStudentPaymentFilter({ id: student.id, name: student.name }),
+    ).sort({
       submitted_at: -1,
     });
     return items.map((item) => item.toJSON());
@@ -195,16 +199,13 @@ export const userService = {
   },
 
   async createStudent(payload: CreateStudentInput) {
-    const user = await UserModel.create({
+    const user = await createStudentAccount({
       name: payload.name,
-      email: payload.email.toLowerCase(),
-      username: payload.username.toLowerCase(),
+      email: payload.email,
+      username: payload.username,
       password: payload.password,
-      role: "student",
-      status: payload.status,
       phone: payload.phone,
-      enrolled_courses_count: 0,
-      publish_status: "published",
+      status: payload.status,
     });
     return user.toJSON();
   },

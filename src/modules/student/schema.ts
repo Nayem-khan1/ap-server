@@ -33,6 +33,17 @@ const submitQuizSchema = z.object({
   answers: z.record(z.string(), z.array(z.string())),
 });
 
+const couponCodeSchema = z
+  .string()
+  .trim()
+  .min(3)
+  .max(32)
+  .regex(/^[a-zA-Z0-9_-]+$/);
+
+const courseEnrollmentBodySchema = z.object({
+  coupon_code: couponCodeSchema.optional(),
+});
+
 export const studentValidation = {
   courseIdParam: { params: courseIdParamSchema },
   certificateIdParam: { params: certificateIdParamSchema },
@@ -50,6 +61,10 @@ export const studentValidation = {
   },
   lessonNoteCompletion: {
     params: lessonActionParamSchema,
+  },
+  courseEnrollment: {
+    params: courseIdParamSchema,
+    body: courseEnrollmentBodySchema,
   },
   updateProfile: { body: updateProfileSchema },
   localeQuery: { query: localeQuerySchema },

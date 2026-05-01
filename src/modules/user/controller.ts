@@ -82,6 +82,17 @@ export const userController = {
     });
   }),
 
+  createStudent: catchAsync(async (req: Request, res: Response) => {
+    const data = await userService.createStudent(req.body);
+    return sendResponse({
+      res,
+      statusCode: StatusCodes.CREATED,
+      success: true,
+      message: "Student created successfully",
+      data,
+    });
+  }),
+
   createAdmin: catchAsync(async (req: Request, res: Response) => {
     const data = await userService.createAdmin(req.body);
     return sendResponse({

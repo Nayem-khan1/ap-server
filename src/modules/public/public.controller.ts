@@ -45,6 +45,21 @@ export const publicController = {
     });
   }),
 
+  previewCoursePricing: catchAsync(async (req: Request, res: Response) => {
+    const data = await publicService.previewCoursePricing(
+      req.params.courseId,
+      req.body,
+    );
+
+    return sendResponse({
+      res,
+      statusCode: StatusCodes.OK,
+      success: true,
+      message: "Course pricing preview generated successfully",
+      data,
+    });
+  }),
+
   listBlogs: catchAsync(async (req: Request, res: Response) => {
     const data = await publicService.listBlogs(req.query as any);
 

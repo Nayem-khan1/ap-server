@@ -27,8 +27,22 @@ export const enrollmentController = {
     });
   }),
 
+  previewManualEnrollment: catchAsync(async (req: Request, res: Response) => {
+    const data = await enrollmentService.previewManualEnrollment(req.body);
+    return sendResponse({
+      res,
+      statusCode: StatusCodes.OK,
+      success: true,
+      message: "Manual enrollment pricing preview generated successfully",
+      data,
+    });
+  }),
+
   manualEnroll: catchAsync(async (req: Request, res: Response) => {
-    const data = await enrollmentService.manualEnroll(req.body);
+    const data = await enrollmentService.manualEnroll({
+      ...req.body,
+      verified_by_user_id: req.user?.userId,
+    });
     return sendResponse({
       res,
       statusCode: StatusCodes.CREATED,
@@ -82,4 +96,3 @@ export const enrollmentController = {
     });
   }),
 };
-

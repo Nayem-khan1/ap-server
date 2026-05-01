@@ -34,7 +34,7 @@ export const bulkDeleteSchema = z.object({
 export const createStudentSchema = z.object({
   name: z.string().min(2),
   email: z.string().email(),
-  username: z.string().min(2),
+  username: z.string().min(2).optional(),
   password: z.string().min(6),
   phone: z.string().min(6).default(""),
   status: userStatusSchema.default("active"),
@@ -69,4 +69,3 @@ export type UpdateAdminInput = z.infer<typeof updateAdminSchema>;
 export type CreateStudentInput = z.infer<typeof createStudentSchema>;
 export type CreateInstructorInput = z.infer<typeof createInstructorSchema>;
 export type UpdateInstructorInput = z.infer<typeof updateInstructorSchema>;
-
