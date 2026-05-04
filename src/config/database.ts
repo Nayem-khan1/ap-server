@@ -70,11 +70,17 @@ async function connectWithUri(uri: string, label: "MONGO_URI" | "MONGO_FALLBACK_
     logger.debug(`${label} contained empty query options and was sanitized`);
   }
 
-  await mongoose.connect(sanitizedUri);
+  await mongoose.connect(sanitizedUri, {
+    autoIndex: !env.IS_PRODUCTION,
+    maxPoolSize: env.MONGO_MAX_POOL_SIZE,
+    minPoolSize: env.MONGO_MIN_POOL_SIZE,
+    serverSelectionTimeoutMS: env.MONGO_SERVER_SELECTION_TIMEOUT_MS,
+  });
 }
 
 export async function connectDatabase(): Promise<void> {
   mongoose.set("strictQuery", true);
+  mongoose.set("autoIndex", !env.IS_PRODUCTION);
 
   try {
     await connectWithUri(env.MONGO_URI, "MONGO_URI");
@@ -103,4 +109,13 @@ export async function connectDatabase(): Promise<void> {
     await connectWithUri(fallbackUri, "MONGO_FALLBACK_URI");
     logger.info("Connected to MongoDB (fallback URI)");
   }
+}
+
+export async function disconnectDatabase(): Promise<void> {
+  if (mongoose.connection.readyState === 0) {
+    return;
+  }
+
+  await mongoose.disconnect();
+  logger.info("Disconnected from MongoDB");
 }

@@ -36,6 +36,14 @@ const TOKEN_CACHE_KEY = "bkash_grant_token";
 const ONE_HOUR_MS = 60 * 60 * 1000;
 let cachedToken: { value: string; expiresAt: number } | null = null;
 
+function canUseMockGateway(): boolean {
+  return !env.IS_PRODUCTION || !env.REQUIRE_EXTERNAL_SERVICES;
+}
+
+function trimTrailingSlash(value: string): string {
+  return value.replace(/\/+$/, "");
+}
+
 function isExampleDomainUrl(rawUrl: string): boolean {
   try {
     const parsed = new URL(rawUrl);
@@ -67,6 +75,11 @@ function resolveBkashCallbackUrl(): string {
   const webhookUrl = env.BKASH_WEBHOOK.trim();
   if (webhookUrl && isValidHttpUrl(webhookUrl) && !isExampleDomainUrl(webhookUrl)) {
     return webhookUrl;
+  }
+
+  const publicApiBaseUrl = env.PUBLIC_API_BASE_URL.trim();
+  if (publicApiBaseUrl) {
+    return `${trimTrailingSlash(publicApiBaseUrl)}/api/v1/payments/bkash/callback`;
   }
 
   if (
@@ -236,6 +249,10 @@ export async function bkashCreatePayment(payload: {
   const callbackUrl = resolveBkashCallbackUrl();
 
   if (!env.BKASH_BASE_URL) {
+    if (!canUseMockGateway()) {
+      throw new Error("bKash gateway is not configured");
+    }
+
     return {
       paymentID: `mock_${payload.invoiceNumber}`,
       bkashURL: `${callbackUrl}?status=success&invoice=${payload.invoiceNumber}`,
@@ -271,6 +288,10 @@ export async function bkashCreatePayment(payload: {
       mode: "sandbox",
     };
   } catch (error) {
+    if (!canUseMockGateway()) {
+      throw error;
+    }
+
     logger.warn("bKash create payment failed, falling back to mock mode");
     return {
       paymentID: `mock_${payload.invoiceNumber}`,
@@ -289,6 +310,10 @@ export async function bkashExecutePayment(paymentID: string): Promise<{
   raw: unknown;
 }> {
   if (!env.BKASH_BASE_URL) {
+    if (!canUseMockGateway()) {
+      throw new Error("bKash gateway is not configured");
+    }
+
     const statusCode = "0000";
     const statusMessage = "Successful";
     const transactionStatus = "Completed";
@@ -339,6 +364,10 @@ export async function bkashExecutePayment(paymentID: string): Promise<{
 
 export async function bkashQueryPayment(paymentID: string): Promise<BkashGatewayResult> {
   if (!env.BKASH_BASE_URL) {
+    if (!canUseMockGateway()) {
+      throw new Error("bKash gateway is not configured");
+    }
+
     return normalizeBkashResult(
       {
         trxID: `TRX-${paymentID}`.slice(0, 24),
@@ -386,6 +415,10 @@ export async function bkashRefundPayment(payload: {
   sku?: string;
 }): Promise<BkashRefundResult> {
   if (!env.BKASH_BASE_URL) {
+    if (!canUseMockGateway()) {
+      throw new Error("bKash gateway is not configured");
+    }
+
     return normalizeBkashRefundResult({
       refundTrxID: `RFND-${payload.trxID}`.slice(0, 30),
       statusCode: "0000",

@@ -1,0 +1,35 @@
+module.exports = {
+  apps: [
+    {
+      name: "astronomy-pathshala-api",
+      cwd: __dirname,
+      script: "dist/server.js",
+      exec_mode: "cluster",
+      instances: process.env.PM2_INSTANCES || "max",
+      autorestart: true,
+      watch: false,
+      max_memory_restart: process.env.PM2_MAX_MEMORY_RESTART || "512M",
+      exp_backoff_restart_delay: 100,
+      min_uptime: "10s",
+      max_restarts: 10,
+      kill_timeout: 15000,
+      listen_timeout: 10000,
+      merge_logs: true,
+      time: true,
+      env: {
+        NODE_ENV: "development",
+        HOST: "0.0.0.0",
+        PORT: process.env.PORT || 5000,
+        TRUST_PROXY: process.env.TRUST_PROXY || "false",
+        LOG_LEVEL: process.env.LOG_LEVEL || "debug",
+      },
+      env_production: {
+        NODE_ENV: "production",
+        HOST: "0.0.0.0",
+        PORT: process.env.PORT || 5000,
+        TRUST_PROXY: process.env.TRUST_PROXY || "1",
+        LOG_LEVEL: process.env.LOG_LEVEL || "info",
+      },
+    },
+  ],
+};

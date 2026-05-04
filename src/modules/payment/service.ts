@@ -38,6 +38,10 @@ function appendQueryParams(
   return url.toString();
 }
 
+function trimTrailingSlash(value: string): string {
+  return value.replace(/\/+$/, "");
+}
+
 function resolveCallbackRedirectUrl(
   status: CallbackRedirectStatus,
   payment: Record<string, unknown>,
@@ -46,8 +50,13 @@ function resolveCallbackRedirectUrl(
   statusMessage?: string,
   transactionStatus?: string,
 ): string | null {
-  const successFallbackUrl = "http://localhost:3000/payment/success";
-  const failureFallbackUrl = "http://localhost:3000/payment/fail";
+  const webAppBaseUrl = env.PUBLIC_WEB_APP_URL.trim();
+  const successFallbackUrl = webAppBaseUrl
+    ? `${trimTrailingSlash(webAppBaseUrl)}/payment/success`
+    : "http://localhost:3000/payment/success";
+  const failureFallbackUrl = webAppBaseUrl
+    ? `${trimTrailingSlash(webAppBaseUrl)}/payment/fail`
+    : "http://localhost:3000/payment/fail";
   let baseUrl = "";
 
   if (status === "success") {

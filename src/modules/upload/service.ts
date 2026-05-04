@@ -20,6 +20,10 @@ function hasCloudinaryCredentials(): boolean {
   );
 }
 
+function canUseMockUploads(): boolean {
+  return !env.IS_PRODUCTION || !env.REQUIRE_EXTERNAL_SERVICES;
+}
+
 function toSafeFileName(fileName: string): string {
   return fileName
     .trim()
@@ -73,6 +77,13 @@ export const uploadService = {
     }
 
     if (!hasCloudinaryCredentials()) {
+      if (!canUseMockUploads()) {
+        throw new AppError(
+          StatusCodes.SERVICE_UNAVAILABLE,
+          "Asset storage is not configured",
+        );
+      }
+
       logger.warn("Cloudinary credentials are missing. Returning mock image URL.");
       return { url: createMockUploadUrl("images", file.originalname) };
     }
@@ -97,6 +108,13 @@ export const uploadService = {
     }
 
     if (!hasCloudinaryCredentials()) {
+      if (!canUseMockUploads()) {
+        throw new AppError(
+          StatusCodes.SERVICE_UNAVAILABLE,
+          "Asset storage is not configured",
+        );
+      }
+
       logger.warn("Cloudinary credentials are missing. Returning mock file URL.");
       return { url: createMockUploadUrl("files", file.originalname) };
     }
