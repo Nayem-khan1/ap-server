@@ -1,11 +1,15 @@
 import dotenv from "dotenv";
 import { z } from "zod";
 
+// Keep process-manager variables above dotenv file defaults.
+const runtimeEnv = { ...process.env };
+
 dotenv.config();
 dotenv.config({
   path: `.env.${process.env.NODE_ENV ?? "development"}`,
   override: true,
 });
+Object.assign(process.env, runtimeEnv);
 
 type TrustProxySetting = boolean | number | string;
 
